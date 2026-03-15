@@ -41,7 +41,7 @@ function App() {
 // Sub-componente para el Panel de Admin
 const AdminPanel = () => {
   const [users] = useState([
-    { id: 1, name: 'pedro_music', role: 'user' },
+    { id: 1, name: 'pedro_music', role: 'Artista' },
     { id: 2, name: 'laura_beats', role: 'user' }
   ]);
 

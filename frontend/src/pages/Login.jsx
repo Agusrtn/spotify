@@ -60,7 +60,7 @@ const Login = ({ onLogin }) => {
             <label className="text-[10px] text-gray-500 font-black uppercase ml-4 mb-2 block">Username</label>
             <input 
               type="text" 
-              placeholder="Ej: Agus_rtn" 
+              placeholder="Ej: Paquito_1234" 
               className="w-full bg-black/50 border border-white/10 p-4 rounded-2xl text-white focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 outline-none transition-all placeholder:text-gray-700"
               onChange={(e) => setId(e.target.value)}
               required
