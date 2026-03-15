@@ -1,20 +1,58 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const authRoutes = require('./routes/auth');
+const express = require("express")
+const mongoose = require("mongoose")
+const cors = require("cors")
+const bcrypt = require("bcryptjs")
+const jwt = require("jsonwebtoken")
 
-const app = express();
+const app = express()
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(cors())
+app.use(express.json())
 
-// Rutas
-app.use('/api/auth', authRoutes);
+mongoose.connect("TU_URL_MONGODB")
 
-// Ruta de prueba
-app.get('/', (req, res) => res.send('API de Spotify clon funcionando'));
+const User = mongoose.model("User", {
+  username: String,
+  password: String,
+  role: String,
+  accessDenied: Boolean
+})
 
-const PORT = 3000;
-app.listen(PORT, () => console.log(`Servidor en http://localhost:${PORT}`));
+app.post("/login", async (req,res)=>{
+
+ const {username,password} = req.body
+
+ const user = await User.findOne({username})
+
+ if(!user){
+   return res.status(401).json({error:"user not found"})
+ }
+
+ const valid = await bcrypt.compare(password,user.password)
+
+ if(!valid){
+   return res.status(401).json({error:"wrong password"})
+ }
+
+ if(user.accessDenied){
+   return res.status(403).json({error:"banned"})
+ }
+
+ const token = jwt.sign(
+   {id:user._id,role:user.role},
+   "RTN_SECRET"
+ )
+
+ res.json({
+   token,
+   user:{
+    username:user.username,
+    role:user.role
+   }
+ })
+
+})
+
+app.listen(3000,()=>{
+ console.log("server running")
+})
