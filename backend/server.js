@@ -108,4 +108,35 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en el puerto ${PORT}`);
 });
 
+// RUTA DE REGISTRO
+app.post("/register", async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+
+    // Verificar si el usuario ya existe
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({ error: "El nombre de usuario ya está pillado" });
+    }
+
+    // Encriptar la contraseña
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Crear nuevo usuario
+    const newUser = new User({
+      username,
+      password: hashedPassword,
+      role: role || 'user', // Por defecto es user si no se manda nada
+      bio: "¡Nueva leyenda en RTN MUSIC!",
+      profilePic: ""
+    });
+
+    await newUser.save();
+    res.status(201).json({ message: "Usuario creado con éxito en la Crew" });
+  } catch (error) {
+    res.status(500).json({ error: "Error al registrar usuario" });
+  }
+});
+
 module.exports = app;
