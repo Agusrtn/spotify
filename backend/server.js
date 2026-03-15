@@ -139,4 +139,4 @@ app.post("/register", async (req, res) => {
   }
 });
 
-module.exports = app;
+module.exports = mongoose.model('User', UserSchema);
