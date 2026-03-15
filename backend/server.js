@@ -36,12 +36,14 @@ app.post("/register", async (req, res) => {
       username,
       password: hashedPassword,
       role: role || 'user',
-      bio: "¡Nueva leyenda en RTN MUSIC!"
+      bio: "¡Nueva leyenda en RTN MUSIC!",
+      profilePic: ""
     });
 
     await newUser.save();
     res.status(201).json({ message: "Usuario creado con éxito" });
   } catch (error) {
+    console.error("Error en registro:", error);
     res.status(500).json({ error: "Error al registrar usuario" });
   }
 });
@@ -53,6 +55,7 @@ app.post("/login", async (req, res) => {
     const user = await User.findOne({ username });
     
     if (!user) return res.status(401).json({ error: "Usuario no existe en la Crew" });
+    if (user.accessDenied) return res.status(403).json({ error: "Estás baneado de RTN MUSIC" });
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: "Credenciales inválidas" });
@@ -105,4 +108,4 @@ app.put("/update-profile", async (req, res) => {
 
 // PUERTO
 const PORT = process.env.PORT || 10000; 
-app.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
