@@ -1,0 +1,15 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno (¡MUY IMPORTANTE PARA SEGURIDAD!)
+.env
+
+# Archivos de música subidos localmente
+uploads/*.mp3
+uploads/*.wav
+
+# Logs
+npm-debug.log*
+
+# Base de datos local (si usas archivos JSON o SQLite)
+data/

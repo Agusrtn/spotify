@@ -1,0 +1,27 @@
+/* Estilos base para RTN MUSIC */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #080808;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar personalizada amarilla */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: #facc15;
+  border-radius: 10px;
+}
+
+/* Efecto de selección de texto */
+::selection {
+  background: #facc15;
+  color: #000;
+}
