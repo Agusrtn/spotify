@@ -20,6 +20,49 @@ mongoose.connect(process.env.MONGO_URI)
 // 3. Importar el modelo de Usuario (Mejor usar el archivo que ya tienes en models/User.js)
 const User = require('./models/User'); 
 
+// --- RUTAS DE PERFIL Y PLAYLISTS ---
+
+// Actualizar Perfil (Bio y Foto)
+app.put("/update-profile", async (req, res) => {
+  try {
+    const { userId, bio, profilePic } = req.body;
+    const updatedUser = await User.findByIdAndUpdate(
+      userId, 
+      { bio, profilePic }, 
+      { new: true }
+    );
+    res.json(updatedUser);
+  } catch (error) {
+    res.status(500).json({ error: "Error al actualizar el perfil" });
+  }
+});
+
+// Buscar Artistas (Para el buscador de Explorar)
+app.get("/search", async (req, res) => {
+  try {
+    const { query } = req.query;
+    const artists = await User.find({ 
+      username: { $regex: query, $options: "i" },
+      role: "artist" 
+    });
+    res.json(artists);
+  } catch (error) {
+    res.status(500).json({ error: "Error en la búsqueda" });
+  }
+});
+
+// Crear Playlist (Requiere el modelo Playlist que creamos antes)
+const Playlist = require('./models/Playlist'); // Asegúrate de que el archivo existe
+app.post("/playlists", async (req, res) => {
+  try {
+    const { name, creatorId, songs } = req.body;
+    const newPlaylist = new Playlist({ name, creator: creatorId, songs });
+    await newPlaylist.save();
+    res.json(newPlaylist);
+  } catch (error) {
+    res.status(500).json({ error: "Error al crear la playlist" });
+  }
+});
 // Ruta de Login
 app.post("/login", async (req, res) => {
   try {
