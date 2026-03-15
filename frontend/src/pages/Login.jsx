@@ -10,6 +10,7 @@ const Login = ({ onLogin }) => {
     { id: 1, username: 'Agus_rtn', password: 'Maragus2417', role: 'admin', accessDenied: false },
     { id: 2, username: 'pedro_music', password: '123', role: 'user', accessDenied: false },
     { id: 3, username: 'laura_beats', password: '123', role: 'artist', accessDenied: true }, // Usuario baneado
+     { id: 4, username: 'paquito', password: '123', role: 'artist', accessDenied: false },
   ];
 
   const handleEntry = (e) => {
