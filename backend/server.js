@@ -75,9 +75,12 @@ app.post("/login", async (req, res) => {
         profilePic: user.profilePic
       } 
     });
-  } catch (error) {
-    console.error("Error en login:", error);
-    res.status(500).json({ error: "Error interno del servidor" });
+ } catch (error) {
+    // Esto imprimirá el error real en la consola de Render
+    console.error("DETALLE DEL FALLO EN LOGIN:", error); 
+    
+    // Esto enviará el mensaje real al cartelito de error en tu web
+    res.status(500).json({ error: `Fallo en el servidor: ${error.message}` });
   }
 });
 
