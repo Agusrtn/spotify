@@ -108,39 +108,78 @@ function App() {
 
 // 4. COMPONENTE MODAL (Fuera de App para limpieza)
 const UploadModal = ({ isOpen, onClose, userId }) => {
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [audioFile, setAudioFile] = useState(null);
+  const [coverFile, setCoverFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+
   if (!isOpen) return null;
 
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!audioFile || !title) return alert("¡Nombre y Audio son obligatorios!");
+    
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('description', desc);
+    formData.append('artistId', userId);
+    formData.append('audio', audioFile);
+    if (coverFile) formData.append('cover', coverFile);
+
+    try {
+      const res = await fetch(`${API_URL}/upload-song`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        alert("¡HIT PUBLICADO EN RTN!");
+        onClose();
+        window.location.reload(); // Para refrescar y ver cambios
+      } else {
+        alert("Error al subir el archivo");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-[#121212] border border-white/10 w-full max-w-lg rounded-[40px] p-10 animate-in zoom-in-95 duration-300 relative">
-        <h2 className="text-3xl font-black italic mb-6 uppercase tracking-tighter">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <form onSubmit={handleUpload} className="bg-[#121212] border border-white/10 w-full max-w-lg rounded-[40px] p-10 relative animate-in zoom-in-95">
+        <h2 className="text-3xl font-black italic mb-6 uppercase tracking-tighter text-white">
           SOLTAR <span className="text-yellow-400">NUEVO HIT</span>
         </h2>
         
-        <div className="space-y-6">
-          <div className="border-2 border-dashed border-white/10 rounded-3xl p-10 text-center hover:border-yellow-400/50 transition-all cursor-pointer group">
-            <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest group-hover:text-white transition-colors">Arrastra tu MP3 aquí</p>
+        <div className="space-y-4">
+          <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-8 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
+            <input type="file" accept="audio/*" required onChange={(e) => setAudioFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+              {audioFile ? `✅ ${audioFile.name}` : "SELECCIONAR MP3"}
+            </p>
+          </div>
+
+          <div className="relative border border-white/5 bg-black/40 rounded-2xl p-4 text-center">
+            <input type="file" accept="image/*" onChange={(e) => setCoverFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+            <p className="text-[10px] font-bold uppercase text-gray-700">
+              {coverFile ? `🖼️ PORTADA: ${coverFile.name}` : "SUBIR CARÁTULA (OPCIONAL)"}
+            </p>
           </div>
           
-          <input 
-            type="text" 
-            placeholder="Nombre del track" 
-            className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white placeholder:text-gray-700 transition-all" 
-          />
+          <input type="text" placeholder="NOMBRE DEL TRACK" required className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold" onChange={(e) => setTitle(e.target.value)} />
+          <textarea placeholder="DESCRIPCIÓN" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20" onChange={(e) => setDesc(e.target.value)} />
           
-          <div className="flex gap-4">
-            <button 
-              onClick={onClose} 
-              className="flex-1 text-gray-500 font-black uppercase text-[10px] tracking-widest hover:text-white transition-colors"
-            >
-              Cancelar
-            </button>
-            <button className="flex-1 bg-yellow-400 text-black font-black py-4 rounded-2xl uppercase tracking-widest text-[10px] shadow-lg shadow-yellow-400/20 hover:scale-[1.02] active:scale-95 transition-all">
-              Publicar
+          <div className="flex gap-4 pt-4">
+            <button type="button" onClick={onClose} className="flex-1 text-gray-500 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
+            <button disabled={loading} className="flex-1 bg-yellow-400 text-black font-black py-4 rounded-2xl uppercase tracking-widest text-[10px] shadow-lg shadow-yellow-400/20 disabled:opacity-50">
+              {loading ? "SUBIENDO..." : "PUBLICAR HIT"}
             </button>
           </div>
         </div>
-      </div>
+      </form>
     </div>
   );
 };
