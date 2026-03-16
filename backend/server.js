@@ -52,21 +52,32 @@ const upload = multer({ storage: storage });
 app.post("/upload-song", upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
   try {
     const { title, description, artistId } = req.body;
-    if (!req.files['audio']) return res.status(400).json({ error: "Falta el archivo de audio" });
+    
+    if (!title) return res.status(400).json({ error: "El título es obligatorio" });
+    if (!artistId) return res.status(400).json({ error: "ID de artista faltante" });
+    if (!req.files || !req.files['audio']) return res.status(400).json({ error: "Falta el archivo de audio" });
+
+    // Validar que Cloudinary esté configurado
+    if (!process.env.CLOUDINARY_NAME || !process.env.CLOUDINARY_KEY) {
+      return res.status(500).json({ error: "Servidor no configurado: Cloudinary sin credenciales" });
+    }
 
     const newSong = new Song({
       title,
-      description,
+      description: description || '',
       artist: artistId,
       audioUrl: req.files['audio'][0].path,
       coverUrl: req.files['cover'] ? req.files['cover'][0].path : ''
     });
 
     await newSong.save();
-    res.status(201).json({ message: "¡Hit en la calle!", song: newSong });
+    return res.status(201).json({ message: "¡Hit en la calle!", song: newSong });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al subir a Cloudinary" });
+    console.error('Error en /upload-song:', error.message);
+    return res.status(500).json({ 
+      error: "Error al subir el archivo",
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
