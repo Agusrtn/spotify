@@ -7,12 +7,14 @@ const jwt = require("jsonwebtoken");
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
+const path = require('path');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Modelos
 const User = require('./models/User'); 
@@ -68,11 +70,109 @@ app.post("/upload-song", upload.fields([{ name: 'audio' }, { name: 'cover' }]), 
   }
 });
 
-// (Mantén tus rutas de /register, /login, /search y /update-profile aquí igual que las tenías)
+app.post('/register', async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
 
-app.post("/register", async (req, res) => { /* Tu código actual */ });
-app.post("/login", async (req, res) => { /* Tu código actual */ });
-app.get("/search", async (req, res) => { /* Tu código actual */ });
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
+    }
 
-const PORT = process.env.PORT || 10000; 
-app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
+    const exists = await User.findOne({ username });
+    if (exists) {
+      return res.status(409).json({ error: 'Ese usuario ya existe' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      username,
+      password: hashedPassword,
+      role: role === 'artist' || role === 'admin' ? role : 'user',
+    });
+
+    await newUser.save();
+    return res.status(201).json({
+      message: 'Registro exitoso',
+      user: {
+        _id: newUser._id,
+        username: newUser.username,
+        role: newUser.role,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al registrar usuario' });
+  }
+});
+
+app.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
+    }
+
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ error: 'Credenciales incorrectas' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Credenciales incorrectas' });
+    }
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '7d' }
+    );
+
+    return res.json({
+      token,
+      user: {
+        _id: user._id,
+        username: user.username,
+        role: user.role,
+        bio: user.bio,
+        profilePic: user.profilePic,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al iniciar sesión' });
+  }
+});
+
+app.get('/search', async (req, res) => {
+  try {
+    const query = (req.query.query || '').trim();
+    if (!query) {
+      return res.json([]);
+    }
+
+    const users = await User.find({
+      username: { $regex: query, $options: 'i' },
+    })
+      .select('_id username role profilePic')
+      .limit(20);
+
+    return res.json(users);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al buscar artistas' });
+  }
+});
+
+const PORT = Number(process.env.PORT) || 10000;
+const server = app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ El puerto ${PORT} ya está en uso. Define otro puerto en PORT.`);
+  } else {
+    console.error('❌ Error del servidor:', err);
+  }
+  process.exit(1);
+});
