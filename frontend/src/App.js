@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import { API_URL } from './config';
 // IMPORTANTE: Asegúrate de tener lucide-react instalado
 import { Disc, Play } from 'lucide-react'; 
-
-const API_URL = "https://rtnmusicappbackend.onrender.com";
 
 function App() {
   const [user, setUser] = useState(null);

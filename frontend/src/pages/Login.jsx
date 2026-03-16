@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
+import { API_URL } from '../config';
 
 const Login = ({ onLogin }) => {
   const [id, setId] = useState('');
   const [pass, setPass] = useState('');
   const [isRegistering, setIsRegistering] = useState(false); // Modo registro
   const [role, setRole] = useState('user'); // Rol por defecto
-
-  const API_URL = "https://rtnmusicappbackend.onrender.com";
 
   const handleAuth = async (e) => {
     e.preventDefault();

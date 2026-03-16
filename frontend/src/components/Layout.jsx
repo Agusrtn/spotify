@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, Disc, ShieldAlert } from 'lucide-react';
+import { API_URL } from '../config';
 
-const Layout = ({ children, setView, user, view }) => {
+const Layout = ({ children, setView, user, view, setModalOpen }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef(null);
 
@@ -70,7 +71,7 @@ const Layout = ({ children, setView, user, view }) => {
             <div className="bg-gradient-to-br from-yellow-400/20 to-transparent border border-yellow-400/30 p-5 rounded-[28px] backdrop-blur-md">
               <p className="text-[10px] text-yellow-400 font-black uppercase tracking-widest mb-2 px-1">Artist Zone</p>
               <button 
-                onClick={() => setView('subir-musica')}
+                onClick={() => setModalOpen(true)}
                 className="text-xs font-black bg-yellow-400 text-black w-full py-3 rounded-xl hover:shadow-[0_0_25px_rgba(250,204,21,0.5)] transition-all uppercase"
               >
                 Drop New Hit
@@ -115,7 +116,7 @@ const Layout = ({ children, setView, user, view }) => {
 
       {/* PLAYER MODERNO */}
       <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl h-24 bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[35px] px-10 flex items-center justify-between shadow-2xl z-50">
-        <audio ref={audioRef} src="http://localhost:3000/uploads/test.mp3" />
+        <audio ref={audioRef} src={`${API_URL}/uploads/test.mp3`} />
 
         <div className="flex items-center gap-5 w-1/3">
           <div className="w-14 h-14 bg-yellow-400 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-400/20">
