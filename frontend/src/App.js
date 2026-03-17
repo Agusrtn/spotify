@@ -139,19 +139,21 @@ function App() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {allSongs && allSongs.length > 0 ? (
                 allSongs.map((song, idx) => (
-                  <div key={song._id} className="group relative bg-white/5 border border-white/5 p-4 rounded-[35px] hover:bg-white/10 transition-all cursor-pointer">
-                    <div className="aspect-square bg-yellow-400/10 rounded-[25px] mb-4 flex items-center justify-center overflow-hidden">
+                  <div key={song._id} className="group relative bg-white/5 border border-white/5 rounded-[35px] hover:bg-white/10 transition-all cursor-pointer overflow-hidden">
+                    <div className="aspect-square bg-gray-800 rounded-[25px] flex items-center justify-center overflow-hidden relative">
                       {song.coverUrl ? (
                         <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
                       ) : (
-                        <Disc className="text-yellow-400/20 group-hover:animate-spin-slow" size={60} />
+                        <Disc className="text-yellow-400/40" size={80} />
                       )}
                     </div>
-                    <h4 className="font-black uppercase italic text-sm line-clamp-2">{song.title}</h4>
-                    <p className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">{song.artist?.username || 'Anónimo'}</p>
+                    <div className="p-4">
+                      <h4 className="font-black uppercase italic text-sm line-clamp-2">{song.title}</h4>
+                      <p className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">{song.artist?.username || 'Anónimo'}</p>
+                    </div>
                     <button 
                       onClick={() => playSong(song, idx)}
-                      className="absolute bottom-6 right-6 w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 shadow-xl shadow-yellow-400/20 hover:scale-110"
+                      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-xl shadow-yellow-400/20 hover:scale-110"
                     >
                       <Play fill="black" size={20} className="ml-1 text-black" />
                     </button>
