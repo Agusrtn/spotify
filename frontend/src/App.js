@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { API_URL } from './config';
-import { Disc, Play, X, Edit3, Save } from 'lucide-react';
+import { Disc, Play, X, Edit3, Save, Trash2 } from 'lucide-react';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -25,6 +25,8 @@ function App() {
   const [settingsBio, setSettingsBio] = useState('');
   const [settingsPic, setSettingsPic] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(false);
 
   const audioRef = useRef(null);
 
@@ -57,6 +59,14 @@ function App() {
   useEffect(() => {
     if (user) setSettingsBio(user.bio || '');
   }, [user]);
+
+  useEffect(() => {
+    if (view === 'admin' && user?.role === 'admin') {
+      fetchMembers();
+      fetchAllSongs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, user]);
 
   const fetchMySongs = async (artistId) => {
     try {
@@ -164,6 +174,81 @@ function App() {
       alert('Error al actualizar perfil');
     } finally {
       setSettingsLoading(false);
+    }
+  };
+
+  const fetchMembers = async () => {
+    if (!user?._id) return;
+    setMembersLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/users?requesterId=${user._id}`);
+      const data = await res.json().catch(() => []);
+      if (!res.ok) {
+        alert(data.error || 'No se pudo cargar miembros');
+        return;
+      }
+      setMembers(data);
+    } catch (err) {
+      console.error(err);
+      alert('Error al cargar miembros');
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const updateMemberRole = async (memberId, role) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/users/${memberId}/role`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, role }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || 'No se pudo actualizar el rol');
+        return;
+      }
+
+      setMembers((prev) => prev.map((m) => (m._id === memberId ? { ...m, role } : m)));
+      if (user._id === memberId) {
+        setUser((prev) => ({ ...prev, role }));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar rol');
+    }
+  };
+
+  const handleDeleteSong = async (songId) => {
+    const confirmed = window.confirm('¿Seguro que quieres eliminar esta canción?');
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`${API_URL}/songs/${songId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || 'No se pudo eliminar la canción');
+        return;
+      }
+
+      if (selectedSong?._id === songId) {
+        setSelectedSong(null);
+      }
+
+      await fetchAllSongs();
+      await fetchMySongs(user._id);
+      if (artistProfile?.artist?._id) {
+        await openArtistProfile(artistProfile.artist._id);
+      }
+      alert('Canción eliminada');
+    } catch (err) {
+      console.error(err);
+      alert('Error al eliminar canción');
     }
   };
 
@@ -387,6 +472,102 @@ function App() {
         </div>
       )}
 
+      {view === 'admin' && user.role === 'admin' && (
+        <div className="animate-in fade-in duration-500 space-y-8">
+          <h2 className="text-4xl font-black uppercase tracking-tighter">Panel de Administrador</h2>
+
+          <section className="bg-white/5 p-8 rounded-[40px] border border-white/10">
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Miembros registrados</p>
+              <button onClick={fetchMembers} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar</button>
+            </div>
+
+            <div className="space-y-3">
+              {membersLoading ? (
+                <p className="text-gray-500 text-sm">Cargando miembros...</p>
+              ) : members.length > 0 ? (
+                members.map((member) => (
+                  <div key={member._id} className="flex items-center gap-4 bg-black/40 border border-white/10 rounded-2xl p-3">
+                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-yellow-400 text-black font-black flex items-center justify-center flex-shrink-0">
+                      {member.profilePic ? (
+                        <img src={member.profilePic} alt={member.username} className="w-full h-full object-cover" />
+                      ) : (
+                        member.username.charAt(0).toUpperCase()
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-white truncate">{member.username}</p>
+                      <p className="text-[11px] text-gray-400">ID: {member._id}</p>
+                    </div>
+
+                    <select
+                      value={member.role}
+                      onChange={(e) => updateMemberRole(member._id, e.target.value)}
+                      className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm font-bold uppercase"
+                    >
+                      <option value="user">user</option>
+                      <option value="artist">artist</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500 text-sm">No hay miembros para mostrar.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="bg-white/5 p-8 rounded-[40px] border border-white/10">
+            <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-6">Gestión global de canciones</p>
+            <div className="space-y-3">
+              {allSongs.length > 0 ? (
+                allSongs.map((song) => {
+                  const idx = allSongs.findIndex((item) => item._id === song._id);
+                  return (
+                    <div key={song._id} className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-2xl p-3">
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                        {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={20} className="text-yellow-400/40" /></div>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold truncate">{song.title}</p>
+                        <button
+                          type="button"
+                          onClick={() => song.artist?._id && openArtistProfile(song.artist._id)}
+                          className="text-[10px] text-yellow-400 uppercase font-bold tracking-widest hover:text-yellow-300"
+                        >
+                          {song.artist?.username || 'Artista'}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => playSong(song, idx >= 0 ? idx : 0)}
+                        className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                      >
+                        <Play size={18} />
+                      </button>
+                      <button
+                        onClick={() => openSongDetail(song)}
+                        className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSong(song._id)}
+                        className="px-3 py-2 rounded-xl bg-red-600/80 hover:bg-red-600 text-xs font-bold uppercase"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-gray-500 text-sm">No hay canciones publicadas.</p>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
       {view === 'ajustes' && (
         <div className="animate-in fade-in duration-500">
           <h2 className="text-4xl font-black uppercase tracking-tighter mb-8">Ajustes de Mi Crew</h2>
@@ -444,6 +625,7 @@ function App() {
           playSong(song, idx >= 0 ? idx : 0);
         }}
         onSave={handleSaveSongChanges}
+        onDelete={handleDeleteSong}
         onOpenArtist={openArtistProfile}
       />
     </Layout>
@@ -486,7 +668,7 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick }) => (
   </div>
 );
 
-const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onOpenArtist }) => {
+const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpenArtist }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -505,6 +687,7 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onOpenArtist }) 
 
   const isOwner = String(song.artist?._id) === String(user?._id);
   const canEdit = isOwner || user?.role === 'admin';
+  const canDelete = isOwner || user?.role === 'admin';
 
   const handleSave = async () => {
     setSaving(true);
@@ -529,7 +712,7 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onOpenArtist }) 
               onClick={() => song.artist?._id && onOpenArtist(song.artist._id)}
               className="mt-4 text-white/80 font-semibold hover:text-yellow-300"
             >
-              {song.artist?.username || 'Artista'} � {new Date(song.createdAt).getFullYear() || '2026'}
+              {song.artist?.username || 'Artista'} - {new Date(song.createdAt).getFullYear() || '2026'}
             </button>
           </div>
 
@@ -551,6 +734,11 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onOpenArtist }) 
             {canEdit && isEditing && (
               <button disabled={saving} onClick={handleSave} className="px-4 py-2 rounded-xl bg-yellow-400 text-black hover:bg-yellow-300 text-sm font-bold uppercase tracking-wide flex items-center gap-2 disabled:opacity-60">
                 <Save size={15} /> {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            )}
+            {canDelete && (
+              <button onClick={() => onDelete(song._id)} className="px-4 py-2 rounded-xl bg-red-600/80 hover:bg-red-600 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
+                <Trash2 size={15} /> Eliminar
               </button>
             )}
           </div>

@@ -5,13 +5,16 @@ const Login = ({ onLogin }) => {
   const [id, setId] = useState('');
   const [pass, setPass] = useState('');
   const [isRegistering, setIsRegistering] = useState(false); // Modo registro
-  const [role, setRole] = useState('user'); // Rol por defecto
+  const [isAdminRegister, setIsAdminRegister] = useState(false);
+  const [adminCode, setAdminCode] = useState('');
 
   const handleAuth = async (e) => {
     e.preventDefault();
     
     // Si estamos registrando, vamos a /register; si no, a /login
-    const endpoint = isRegistering ? "/register" : "/login";
+    const endpoint = isRegistering
+      ? (isAdminRegister ? "/register-admin" : "/register")
+      : "/login";
     
     try {
       const response = await fetch(`${API_URL}${endpoint}`, {
@@ -20,7 +23,7 @@ const Login = ({ onLogin }) => {
         body: JSON.stringify({ 
           username: id, 
           password: pass,
-          role: isRegistering ? role : undefined // Solo enviamos rol si es registro
+          adminCode: isRegistering && isAdminRegister ? adminCode : undefined,
         })
       });
 
@@ -30,6 +33,8 @@ const Login = ({ onLogin }) => {
         if (isRegistering) {
           alert("✅ ¡Registro exitoso! Ahora puedes entrar con tus credenciales.");
           setIsRegistering(false); // Volvemos al modo login
+          setIsAdminRegister(false);
+          setAdminCode('');
         } else {
           onLogin(data.user); // Iniciamos sesión
         }
@@ -60,7 +65,7 @@ const Login = ({ onLogin }) => {
             {isRegistering ? 'Join the' : 'Join the'} <span className="text-yellow-400">CREW</span>
           </h1>
           <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">
-            {isRegistering ? 'Crea tu perfil musical' : 'Vibe Check 2026'}
+            {isRegistering ? (isAdminRegister ? 'Crear cuenta de administrador' : 'Registro de artista') : 'Vibe Check 2026'}
           </p>
         </div>
 
@@ -87,18 +92,29 @@ const Login = ({ onLogin }) => {
             />
           </div>
 
-          {isRegistering && (
+          {isRegistering && isAdminRegister && (
             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-              <label className="text-[10px] text-gray-500 font-black uppercase ml-4 mb-2 block">¿Qué eres?</label>
-              <select 
-                className="w-full bg-black/50 border border-white/10 p-4 rounded-2xl text-yellow-400 font-bold focus:border-yellow-400 outline-none transition-all appearance-none cursor-pointer"
-                onChange={(e) => setRole(e.target.value)}
-                value={role}
-              >
-                <option value="user">OYENTE / FAN</option>
-                <option value="artist">ARTISTA / CREADOR</option>
-              </select>
+              <label className="text-[10px] text-gray-500 font-black uppercase ml-4 mb-2 block">Código Admin</label>
+              <input
+                type="password"
+                placeholder="Código secreto de administrador"
+                className="w-full bg-black/50 border border-white/10 p-4 rounded-2xl text-white focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 outline-none transition-all placeholder:text-gray-700"
+                onChange={(e) => setAdminCode(e.target.value)}
+                value={adminCode}
+                required
+              />
             </div>
+          )}
+
+          {isRegistering && (
+            <label className="flex items-center gap-2 text-xs text-gray-400 font-semibold">
+              <input
+                type="checkbox"
+                checked={isAdminRegister}
+                onChange={(e) => setIsAdminRegister(e.target.checked)}
+              />
+              Crear como cuenta admin
+            </label>
           )}
         </div>
 
@@ -113,12 +129,22 @@ const Login = ({ onLogin }) => {
           {isRegistering ? '¿Ya tienes cuenta?' : '¿No tienes cuenta?'} 
           <button 
             type="button"
-            onClick={() => setIsRegistering(!isRegistering)}
+            onClick={() => {
+              setIsRegistering(!isRegistering);
+              setIsAdminRegister(false);
+              setAdminCode('');
+            }}
             className="text-yellow-400 ml-1 font-black uppercase hover:underline"
           >
             {isRegistering ? 'Inicia sesión' : 'Regístrate aquí'}
           </button>
         </p>
+
+        {isRegistering && !isAdminRegister && (
+          <p className="text-center text-gray-500 text-[10px] mt-3 font-medium uppercase tracking-wide">
+            El registro normal crea cuentas con rol ARTIST por defecto.
+          </p>
+        )}
       </form>
     </div>
   );

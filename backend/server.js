@@ -132,7 +132,7 @@ app.post('/upload-song', (req, res) => {
 
 app.post('/register', async (req, res) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
@@ -147,7 +147,7 @@ app.post('/register', async (req, res) => {
     const newUser = new User({
       username,
       password: hashedPassword,
-      role: role === 'artist' || role === 'admin' ? role : 'user',
+      role: 'artist',
     });
 
     await newUser.save();
@@ -162,6 +162,49 @@ app.post('/register', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al registrar usuario' });
+  }
+});
+
+app.post('/register-admin', async (req, res) => {
+  try {
+    const { username, password, adminCode } = req.body;
+
+    if (!username || !password || !adminCode) {
+      return res.status(400).json({ error: 'Usuario, contraseña y código admin son obligatorios' });
+    }
+
+    if (!process.env.ADMIN_SETUP_CODE) {
+      return res.status(500).json({ error: 'ADMIN_SETUP_CODE no está configurado en el servidor' });
+    }
+
+    if (adminCode !== process.env.ADMIN_SETUP_CODE) {
+      return res.status(403).json({ error: 'Código admin inválido' });
+    }
+
+    const exists = await User.findOne({ username });
+    if (exists) {
+      return res.status(409).json({ error: 'Ese usuario ya existe' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      username,
+      password: hashedPassword,
+      role: 'admin',
+    });
+
+    await newUser.save();
+    return res.status(201).json({
+      message: 'Cuenta admin creada',
+      user: {
+        _id: newUser._id,
+        username: newUser.username,
+        role: newUser.role,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al crear cuenta admin' });
   }
 });
 
@@ -256,18 +299,6 @@ app.get('/all-songs', async (req, res) => {
   }
 });
 
-const PORT = Number(process.env.PORT) || 10000;
-const server = app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
-
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`❌ El puerto ${PORT} ya está en uso. Define otro puerto en PORT.`);
-  } else {
-    console.error('❌ Error del servidor:', err);
-  }
-  process.exit(1);
-});
-
 app.put('/songs/:songId', async (req, res) => {
   try {
     const { songId } = req.params;
@@ -302,6 +333,38 @@ app.put('/songs/:songId', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al actualizar canción' });
+  }
+});
+
+app.delete('/songs/:songId', async (req, res) => {
+  try {
+    const { songId } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Falta userId para autorizar eliminación' });
+    }
+
+    const user = await User.findById(userId).select('_id role');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const song = await Song.findById(songId);
+    if (!song) {
+      return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+
+    const canDelete = user.role === 'admin' || String(song.artist) === String(user._id);
+    if (!canDelete) {
+      return res.status(403).json({ error: 'No tienes permisos para eliminar esta canción' });
+    }
+
+    await Song.findByIdAndDelete(songId);
+    return res.json({ message: 'Canción eliminada' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al eliminar canción' });
   }
 });
 
@@ -393,4 +456,80 @@ app.put('/users/:userId/profile', (req, res) => {
       return res.status(500).json({ error: 'Error al actualizar perfil' });
     }
   });
+});
+
+app.get('/admin/users', async (req, res) => {
+  try {
+    const requesterId = req.query.requesterId;
+    if (!requesterId) {
+      return res.status(400).json({ error: 'Falta requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden ver miembros' });
+    }
+
+    const users = await User.find()
+      .select('_id username role bio profilePic createdAt')
+      .sort({ createdAt: -1 });
+
+    return res.json(users);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener miembros' });
+  }
+});
+
+app.put('/admin/users/:userId/role', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId, role } = req.body;
+
+    if (!requesterId || !role) {
+      return res.status(400).json({ error: 'Faltan datos para actualizar rol' });
+    }
+
+    if (!['user', 'artist', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'Rol inválido' });
+    }
+
+    const requester = await User.findById(requesterId).select('role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden cambiar roles' });
+    }
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    targetUser.role = role;
+    await targetUser.save();
+
+    return res.json({
+      message: 'Rol actualizado',
+      user: {
+        _id: targetUser._id,
+        username: targetUser.username,
+        role: targetUser.role,
+        profilePic: targetUser.profilePic,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al cambiar rol' });
+  }
+});
+
+const PORT = Number(process.env.PORT) || 10000;
+const server = app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ El puerto ${PORT} ya está en uso. Define otro puerto en PORT.`);
+  } else {
+    console.error('❌ Error del servidor:', err);
+  }
+  process.exit(1);
 });
