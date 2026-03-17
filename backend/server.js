@@ -642,6 +642,84 @@ app.put('/admin/users/:userId/role', async (req, res) => {
   }
 });
 
+app.put('/admin/users/:userId/password', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId, newPassword } = req.body;
+
+    if (!requesterId || !newPassword) {
+      return res.status(400).json({ error: 'Faltan datos para restablecer contraseña' });
+    }
+
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden restablecer contraseñas' });
+    }
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    targetUser.password = await bcrypt.hash(String(newPassword), 10);
+    await targetUser.save();
+
+    return res.json({ message: 'Contraseña restablecida' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al restablecer contraseña' });
+  }
+});
+
+app.delete('/admin/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId } = req.body;
+
+    if (!requesterId) {
+      return res.status(400).json({ error: 'Falta requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden eliminar cuentas' });
+    }
+
+    if (String(requester._id) === String(userId)) {
+      return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta admin desde este panel' });
+    }
+
+    const targetUser = await User.findById(userId).select('_id');
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const userSongs = await Song.find({ artist: userId }).select('_id');
+    const songIds = userSongs.map((song) => song._id);
+
+    if (songIds.length > 0) {
+      await Playlist.updateMany({}, { $pull: { songs: { $in: songIds } } });
+      await Song.deleteMany({ _id: { $in: songIds } });
+    }
+
+    await Playlist.deleteMany({ creator: userId });
+    await User.findByIdAndDelete(userId);
+
+    return res.json({
+      message: 'Cuenta eliminada',
+      deletedUserId: userId,
+      deletedSongIds: songIds,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al eliminar cuenta' });
+  }
+});
+
 const PORT = Number(process.env.PORT) || 10000;
 const server = app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
 

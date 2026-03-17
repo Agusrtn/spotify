@@ -29,6 +29,9 @@ function App() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [memberPasswordDrafts, setMemberPasswordDrafts] = useState({});
+  const [memberPasswordConfirmDrafts, setMemberPasswordConfirmDrafts] = useState({});
+  const [memberActionLoading, setMemberActionLoading] = useState({});
   const [playlistForm, setPlaylistForm] = useState({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
   const [playlistSaving, setPlaylistSaving] = useState(false);
 
@@ -366,6 +369,107 @@ function App() {
     } catch (err) {
       console.error(err);
       alert('Error al actualizar rol');
+    }
+  };
+
+  const resetMemberPassword = async (memberId) => {
+    const newPassword = memberPasswordDrafts[memberId] || '';
+    const confirmPassword = memberPasswordConfirmDrafts[memberId] || '';
+
+    if (!newPassword || !confirmPassword) {
+      alert('Escribe y confirma la nueva contraseña');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert('Las contraseñas no coinciden');
+      return;
+    }
+
+    setMemberActionLoading((prev) => ({ ...prev, [memberId]: true }));
+    try {
+      const res = await fetch(`${API_URL}/admin/users/${memberId}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, newPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || 'No se pudo restablecer la contraseña');
+        return;
+      }
+
+      setMemberPasswordDrafts((prev) => ({ ...prev, [memberId]: '' }));
+      setMemberPasswordConfirmDrafts((prev) => ({ ...prev, [memberId]: '' }));
+      alert('Contraseña restablecida');
+    } catch (err) {
+      console.error(err);
+      alert('Error al restablecer contraseña');
+    } finally {
+      setMemberActionLoading((prev) => ({ ...prev, [memberId]: false }));
+    }
+  };
+
+  const deleteMemberAccount = async (memberId) => {
+    const confirmed = window.confirm('¿Seguro que quieres eliminar esta cuenta y sus canciones?');
+    if (!confirmed) return;
+
+    setMemberActionLoading((prev) => ({ ...prev, [memberId]: true }));
+    try {
+      const res = await fetch(`${API_URL}/admin/users/${memberId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || 'No se pudo eliminar la cuenta');
+        return;
+      }
+
+      setMembers((prev) => prev.filter((member) => member._id !== memberId));
+      setAllSongs((prev) => prev.filter((song) => !data.deletedSongIds?.includes(song._id)));
+      setMySongs((prev) => prev.filter((song) => !data.deletedSongIds?.includes(song._id)));
+      setPlaylists((prev) => prev
+        .filter((playlist) => String(playlist.creator?._id || playlist.creator) !== String(memberId))
+        .map((playlist) => ({
+          ...playlist,
+          songs: playlist.songs?.filter((song) => !data.deletedSongIds?.includes(song._id)),
+        })));
+
+      if (selectedSong && data.deletedSongIds?.includes(selectedSong._id)) {
+        setSelectedSong(null);
+      }
+
+      if (currentSong && data.deletedSongIds?.includes(currentSong._id)) {
+        setCurrentSong(null);
+        setIsPlaying(false);
+      }
+
+      if (artistProfile?.artist?._id === memberId) {
+        setArtistProfile(null);
+        setView('admin');
+      }
+
+      setMemberPasswordDrafts((prev) => {
+        const next = { ...prev };
+        delete next[memberId];
+        return next;
+      });
+      setMemberPasswordConfirmDrafts((prev) => {
+        const next = { ...prev };
+        delete next[memberId];
+        return next;
+      });
+
+      alert('Cuenta eliminada');
+    } catch (err) {
+      console.error(err);
+      alert('Error al eliminar cuenta');
+    } finally {
+      setMemberActionLoading((prev) => ({ ...prev, [memberId]: false }));
     }
   };
 
@@ -769,29 +873,62 @@ function App() {
                 <p className="text-gray-500 text-sm">Cargando miembros...</p>
               ) : members.length > 0 ? (
                 members.map((member) => (
-                  <div key={member._id} className="flex items-center gap-4 bg-black/40 border border-white/10 rounded-2xl p-3">
-                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-yellow-400 text-black font-black flex items-center justify-center flex-shrink-0">
-                      {member.profilePic ? (
-                        <img src={member.profilePic} alt={member.username} className="w-full h-full object-cover" />
-                      ) : (
-                        member.username.charAt(0).toUpperCase()
-                      )}
+                  <div key={member._id} className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-yellow-400 text-black font-black flex items-center justify-center flex-shrink-0">
+                        {member.profilePic ? (
+                          <img src={member.profilePic} alt={member.username} className="w-full h-full object-cover" />
+                        ) : (
+                          member.username.charAt(0).toUpperCase()
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-white truncate">{member.username}</p>
+                        <p className="text-[11px] text-gray-400">ID: {member._id}</p>
+                      </div>
+
+                      <select
+                        value={member.role}
+                        onChange={(e) => updateMemberRole(member._id, e.target.value)}
+                        className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm font-bold uppercase"
+                      >
+                        <option value="user">user</option>
+                        <option value="artist">artist</option>
+                        <option value="admin">admin</option>
+                      </select>
                     </div>
 
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-white truncate">{member.username}</p>
-                      <p className="text-[11px] text-gray-400">ID: {member._id}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-3 items-center">
+                      <input
+                        type="password"
+                        value={memberPasswordDrafts[member._id] || ''}
+                        onChange={(e) => setMemberPasswordDrafts((prev) => ({ ...prev, [member._id]: e.target.value }))}
+                        placeholder="Nueva contraseña"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-3 text-sm outline-none focus:border-yellow-400"
+                      />
+                      <input
+                        type="password"
+                        value={memberPasswordConfirmDrafts[member._id] || ''}
+                        onChange={(e) => setMemberPasswordConfirmDrafts((prev) => ({ ...prev, [member._id]: e.target.value }))}
+                        placeholder="Confirmar contraseña"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-3 text-sm outline-none focus:border-yellow-400"
+                      />
+                      <button
+                        onClick={() => resetMemberPassword(member._id)}
+                        disabled={Boolean(memberActionLoading[member._id])}
+                        className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase whitespace-nowrap disabled:opacity-60"
+                      >
+                        Restablecer
+                      </button>
+                      <button
+                        onClick={() => deleteMemberAccount(member._id)}
+                        disabled={Boolean(memberActionLoading[member._id]) || member._id === user._id}
+                        className="px-4 py-3 rounded-xl bg-red-600/80 hover:bg-red-600 text-xs font-bold uppercase whitespace-nowrap disabled:opacity-40"
+                      >
+                        Eliminar cuenta
+                      </button>
                     </div>
-
-                    <select
-                      value={member.role}
-                      onChange={(e) => updateMemberRole(member._id, e.target.value)}
-                      className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm font-bold uppercase"
-                    >
-                      <option value="user">user</option>
-                      <option value="artist">artist</option>
-                      <option value="admin">admin</option>
-                    </select>
                   </div>
                 ))
               ) : (
