@@ -32,6 +32,41 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_SECRET
 });
 
+app.get('/health/upload-config', async (req, res) => {
+  const hasName = Boolean(process.env.CLOUDINARY_NAME);
+  const hasKey = Boolean(process.env.CLOUDINARY_KEY);
+  const hasSecret = Boolean(process.env.CLOUDINARY_SECRET);
+
+  if (!hasName || !hasKey || !hasSecret) {
+    return res.status(500).json({
+      ok: false,
+      error: 'Faltan variables de Cloudinary en el servidor',
+      cloudinary: { hasName, hasKey, hasSecret },
+    });
+  }
+
+  try {
+    await cloudinary.api.ping();
+    return res.json({
+      ok: true,
+      cloudinary: {
+        cloudName: process.env.CLOUDINARY_NAME,
+        keyLast4: process.env.CLOUDINARY_KEY.slice(-4),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: 'Cloudinary no acepta credenciales/configuracion',
+      details: error.message,
+      cloudinary: {
+        cloudName: process.env.CLOUDINARY_NAME,
+        keyLast4: process.env.CLOUDINARY_KEY.slice(-4),
+      },
+    });
+  }
+});
+
 // Configuración de Almacenamiento
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -52,7 +87,10 @@ app.post('/upload-song', (req, res) => {
   upload.fields([{ name: 'audio' }, { name: 'cover' }])(req, res, async (uploadErr) => {
     if (uploadErr) {
       console.error('Error de upload en Cloudinary:', uploadErr.message || uploadErr);
-      return res.status(500).json({ error: `Error de upload: ${uploadErr.message || 'fallo de Cloudinary'}` });
+      return res.status(500).json({
+        error: `Error de upload: ${uploadErr.message || 'fallo de Cloudinary'}`,
+        code: uploadErr.http_code || uploadErr.code || undefined,
+      });
     }
 
     try {
