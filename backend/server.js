@@ -234,6 +234,19 @@ app.get('/songs', async (req, res) => {
   }
 });
 
+app.get('/all-songs', async (req, res) => {
+  try {
+    const songs = await Song.find()
+      .populate('artist', 'username _id')
+      .sort({ createdAt: -1 });
+
+    return res.json(songs);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener canciones' });
+  }
+});
+
 const PORT = Number(process.env.PORT) || 10000;
 const server = app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
 

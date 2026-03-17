@@ -1,15 +1,39 @@
-import React, { useState, useRef } from 'react';
+import React from 'react';
 import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, Disc, ShieldAlert } from 'lucide-react';
-import { API_URL } from '../config';
 
-const Layout = ({ children, setView, user, view, setModalOpen }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef(null);
+const Layout = ({ 
+  children, 
+  setView, 
+  user, 
+  view, 
+  setModalOpen,
+  currentSong,
+  isPlaying,
+  togglePlay,
+  nextSong,
+  prevSong,
+  volume,
+  setVolume,
+  currentTime,
+  duration,
+  audioRef,
+  onTimeUpdate,
+  onDurationChange,
+  onSongEnd
+}) => {
 
-  const togglePlay = () => {
-    if (isPlaying) audioRef.current.pause();
-    else audioRef.current.play();
-    setIsPlaying(!isPlaying);
+  const formatTime = (time) => {
+    if (!time || isNaN(time)) return '0:00';
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
+
+  const handleSeek = (e) => {
+    if (!audioRef.current || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    audioRef.current.currentTime = percent * duration;
   };
 
   return (
@@ -116,35 +140,61 @@ const Layout = ({ children, setView, user, view, setModalOpen }) => {
 
       {/* PLAYER MODERNO */}
       <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl h-24 bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[35px] px-10 flex items-center justify-between shadow-2xl z-50">
-        <audio ref={audioRef} src={`${API_URL}/uploads/test.mp3`} />
+        <audio 
+          ref={audioRef}
+          src={currentSong?.audioUrl}
+          onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
+          onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
+          onEnded={onSongEnd}
+        />
 
-        <div className="flex items-center gap-5 w-1/3">
-          <div className="w-14 h-14 bg-yellow-400 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-400/20">
-            <Mic2 className="text-black" />
+        <div className="flex items-center gap-5 w-1/3 min-w-0">
+          <div className="w-14 h-14 bg-yellow-400 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-400/20 flex-shrink-0 overflow-hidden">
+            {currentSong?.coverUrl ? (
+              <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
+            ) : (
+              <Mic2 className="text-black" />
+            )}
           </div>
-          <div>
-            <h4 className="text-sm font-black text-white tracking-wide">FLOW RTN</h4>
-            <p className="text-[10px] text-yellow-400/70 font-black uppercase italic">System Radio</p>
+          <div className="min-w-0">
+            <h4 className="text-sm font-black text-white tracking-wide truncate">{currentSong?.title || 'FLOW RTN'}</h4>
+            <p className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate">{currentSong?.artist?.username || 'System Radio'}</p>
           </div>
         </div>
 
         <div className="flex flex-col items-center w-1/3 gap-2">
           <div className="flex items-center gap-8">
-            <SkipBack size={20} className="text-gray-600 hover:text-white transition cursor-pointer" />
+            <button
+              onClick={prevSong}
+              className="text-gray-600 hover:text-white transition cursor-pointer hover:scale-110"
+            >
+              <SkipBack size={20} />
+            </button>
             <button 
               onClick={togglePlay}
               className="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-xl"
             >
               {isPlaying ? <Pause fill="black" size={24} /> : <Play fill="black" size={24} className="ml-1" />}
             </button>
-            <SkipForward size={20} className="text-gray-600 hover:text-white transition cursor-pointer" />
+            <button
+              onClick={nextSong}
+              className="text-gray-600 hover:text-white transition cursor-pointer hover:scale-110"
+            >
+              <SkipForward size={20} />
+            </button>
           </div>
           <div className="w-full flex items-center gap-3">
-            <span className="text-[9px] text-gray-600 font-black">0:00</span>
-            <div className="h-[4px] flex-1 bg-white/5 rounded-full overflow-hidden">
-              <div className="h-full bg-yellow-400 w-1/3 shadow-[0_0_10px_#facc15]"></div>
+            <span className="text-[9px] text-gray-600 font-black whitespace-nowrap">{formatTime(currentTime)}</span>
+            <div 
+              className="h-[4px] flex-1 bg-white/5 rounded-full overflow-hidden cursor-pointer hover:h-[6px] transition-all"
+              onClick={handleSeek}
+            >
+              <div 
+                className="h-full bg-yellow-400 shadow-[0_0_10px_#facc15]"
+                style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+              />
             </div>
-            <span className="text-[9px] text-gray-600 font-black">3:45</span>
+            <span className="text-[9px] text-gray-600 font-black whitespace-nowrap">{formatTime(duration)}</span>
           </div>
         </div>
 
@@ -152,8 +202,15 @@ const Layout = ({ children, setView, user, view, setModalOpen }) => {
           <LayoutGrid size={18} className="text-gray-600 hover:text-yellow-400 transition cursor-pointer" />
           <div className="flex items-center gap-3">
             <Volume2 size={18} className="text-gray-600" />
-            <div className="w-20 h-[3px] bg-white/10 rounded-full">
-              <div className="h-full bg-white w-2/3"></div>
+            <div 
+              className="w-20 h-[3px] bg-white/10 rounded-full cursor-pointer hover:h-[4px] transition-all"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const percent = (e.clientX - rect.left) / rect.width;
+                setVolume(Math.max(0, Math.min(1, percent)));
+              }}
+            >
+              <div className="h-full bg-white" style={{ width: `${volume * 100}%` }}></div>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { API_URL } from './config';
@@ -10,8 +10,81 @@ function App() {
   const [view, setView] = useState('inicio');
   const [searchResults, setSearchResults] = useState([]);
   const [mySongs, setMySongs] = useState([]);
-  // 1. ESTADO PARA EL MODAL: Necesario para que el botón de Layout lo abra
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Estados del Reproductor
+  const [allSongs, setAllSongs] = useState([]);
+  const [currentSong, setCurrentSong] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef(null);
+
+  // Fetch todas las canciones al montar
+  useEffect(() => {
+    const fetchAllSongs = async () => {
+      try {
+        const res = await fetch(`${API_URL}/all-songs`);
+        if (res.ok) {
+          const data = await res.json();
+          setAllSongs(data);
+        }
+      } catch (err) { console.error('Error fetching all songs:', err); }
+    };
+    fetchAllSongs();
+  }, []);
+
+  // Sincronizar volumen con el audio element
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
+
+  // Sincronizar play/pause
+  useEffect(() => {
+    if (!audioRef.current || !currentSong) return;
+    if (isPlaying) audioRef.current.play().catch(() => {});
+    else audioRef.current.pause();
+  }, [isPlaying, currentSong]);
+
+  // Manejar fin de canción (siguiente automáticamente)
+  const handleSongEnd = () => {
+    if (currentIndex < allSongs.length - 1) {
+      playSong(allSongs[currentIndex + 1], currentIndex + 1);
+    } else {
+      setIsPlaying(false);
+    }
+  };
+
+  // Reproducir una canción
+  const playSong = (song, index) => {
+    setCurrentSong(song);
+    setCurrentIndex(index);
+    setIsPlaying(true);
+    setCurrentTime(0);
+  };
+
+  // Toggle play/pause
+  const togglePlay = () => {
+    setIsPlaying(!isPlaying);
+  };
+
+  // Siguiente canción
+  const nextSong = () => {
+    if (currentIndex < allSongs.length - 1) {
+      playSong(allSongs[currentIndex + 1], currentIndex + 1);
+    }
+  };
+
+  // Canción anterior
+  const prevSong = () => {
+    if (currentIndex > 0) {
+      playSong(allSongs[currentIndex - 1], currentIndex - 1);
+    }
+  };
 
   const handleSearch = async (query) => {
     if (query.length < 2) { setSearchResults([]); return; }
@@ -35,9 +108,25 @@ function App() {
   if (!user) return <Login onLogin={(userData) => setUser(userData)} />;
 
   return (
-    // 2. PASAMOS setIsModalOpen AL LAYOUT: 
-    // Para que cuando hagas clic en "DROP NEW HIT" cambie a true
-    <Layout setView={setView} user={user} view={view} setModalOpen={setIsModalOpen}>
+    <Layout 
+      setView={setView} 
+      user={user} 
+      view={view} 
+      setModalOpen={setIsModalOpen}
+      currentSong={currentSong}
+      isPlaying={isPlaying}
+      togglePlay={togglePlay}
+      nextSong={nextSong}
+      prevSong={prevSong}
+      volume={volume}
+      setVolume={setVolume}
+      currentTime={currentTime}
+      duration={duration}
+      audioRef={audioRef}
+      onTimeUpdate={(time) => setCurrentTime(time)}
+      onDurationChange={(dur) => setDuration(dur)}
+      onSongEnd={handleSongEnd}
+    >
       
       {view === 'inicio' && (
         <div className="animate-in fade-in duration-700">
@@ -48,18 +137,40 @@ function App() {
           <section className="mt-12">
             <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-6">Novedades en la Crew</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="group relative bg-white/5 border border-white/5 p-4 rounded-[35px] hover:bg-white/10 transition-all cursor-pointer">
-                  <div className="aspect-square bg-yellow-400/10 rounded-[25px] mb-4 flex items-center justify-center overflow-hidden">
-                     <Disc className="text-yellow-400/20 group-hover:animate-spin-slow" size={60} />
+              {allSongs && allSongs.length > 0 ? (
+                allSongs.map((song, idx) => (
+                  <div key={song._id} className="group relative bg-white/5 border border-white/5 p-4 rounded-[35px] hover:bg-white/10 transition-all cursor-pointer">
+                    <div className="aspect-square bg-yellow-400/10 rounded-[25px] mb-4 flex items-center justify-center overflow-hidden">
+                      {song.coverUrl ? (
+                        <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <Disc className="text-yellow-400/20 group-hover:animate-spin-slow" size={60} />
+                      )}
+                    </div>
+                    <h4 className="font-black uppercase italic text-sm line-clamp-2">{song.title}</h4>
+                    <p className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">{song.artist?.username || 'Anónimo'}</p>
+                    <button 
+                      onClick={() => playSong(song, idx)}
+                      className="absolute bottom-6 right-6 w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 shadow-xl shadow-yellow-400/20 hover:scale-110"
+                    >
+                      <Play fill="black" size={20} className="ml-1 text-black" />
+                    </button>
                   </div>
-                  <h4 className="font-black uppercase italic">Track Name #{i}</h4>
-                  <p className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">Artist Name</p>
-                  <button className="absolute bottom-6 right-6 w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 shadow-xl shadow-yellow-400/20">
-                    <Play fill="black" size={20} className="ml-1 text-black" />
-                  </button>
-                </div>
-              ))}
+                ))
+              ) : (
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="group relative bg-white/5 border border-white/5 p-4 rounded-[35px] hover:bg-white/10 transition-all cursor-pointer">
+                    <div className="aspect-square bg-yellow-400/10 rounded-[25px] mb-4 flex items-center justify-center overflow-hidden">
+                       <Disc className="text-yellow-400/20 group-hover:animate-spin-slow" size={60} />
+                    </div>
+                    <h4 className="font-black uppercase italic">Track Name #{i}</h4>
+                    <p className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">Artist Name</p>
+                    <button className="absolute bottom-6 right-6 w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 shadow-xl shadow-yellow-400/20">
+                      <Play fill="black" size={20} className="ml-1 text-black" />
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </section>
         </div>
