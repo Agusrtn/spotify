@@ -19,7 +19,8 @@ const Layout = ({
   audioRef,
   onTimeUpdate,
   onDurationChange,
-  onSongEnd
+  onSongEnd,
+  onOpenArtist
 }) => {
 
   const formatTime = (time) => {
@@ -123,11 +124,15 @@ const Layout = ({
               <p className="text-[9px] text-yellow-400 font-bold uppercase tracking-tighter mt-1">{user.role}</p>
             </div>
             <button 
-              onClick={() => setView('perfil')}
+              onClick={() => setView('ajustes')}
               className="flex items-center gap-2 bg-white/5 p-1.5 rounded-2xl border border-white/10 hover:bg-white/10 transition-all active:scale-95"
             >
-              <div className="w-8 h-8 bg-yellow-400 rounded-xl flex items-center justify-center text-black font-black text-xs shadow-lg shadow-yellow-400/20">
-                {user.username.charAt(0).toUpperCase()}
+              <div className="w-8 h-8 bg-yellow-400 rounded-xl flex items-center justify-center text-black font-black text-xs shadow-lg shadow-yellow-400/20 overflow-hidden">
+                {user.profilePic ? (
+                  <img src={user.profilePic} alt={user.username} className="w-full h-full object-cover" />
+                ) : (
+                  user.username.charAt(0).toUpperCase()
+                )}
               </div>
             </button>
           </div>
@@ -158,7 +163,13 @@ const Layout = ({
           </div>
           <div className="min-w-0">
             <h4 className="text-sm font-black text-white tracking-wide truncate">{currentSong?.title || 'FLOW RTN'}</h4>
-            <p className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate">{currentSong?.artist?.username || 'System Radio'}</p>
+            <button
+              type="button"
+              onClick={() => currentSong?.artist?._id && onOpenArtist(currentSong.artist._id)}
+              className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate hover:text-yellow-300"
+            >
+              {currentSong?.artist?.username || 'System Radio'}
+            </button>
           </div>
         </div>
 

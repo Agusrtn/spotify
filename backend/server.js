@@ -304,3 +304,93 @@ app.put('/songs/:songId', async (req, res) => {
     return res.status(500).json({ error: 'Error al actualizar canción' });
   }
 });
+
+app.get('/search-all', async (req, res) => {
+  try {
+    const query = (req.query.query || '').trim();
+    if (!query) {
+      return res.json({ artists: [], songs: [] });
+    }
+
+    const artists = await User.find({
+      username: { $regex: query, $options: 'i' },
+    })
+      .select('_id username role bio profilePic')
+      .limit(12);
+
+    const songs = await Song.find({
+      title: { $regex: query, $options: 'i' },
+    })
+      .populate('artist', 'username _id profilePic bio')
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    return res.json({ artists, songs });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al buscar contenido' });
+  }
+});
+
+app.get('/artists/:artistId', async (req, res) => {
+  try {
+    const { artistId } = req.params;
+    const artist = await User.findById(artistId).select('_id username role bio profilePic');
+
+    if (!artist) {
+      return res.status(404).json({ error: 'Artista no encontrado' });
+    }
+
+    const songs = await Song.find({ artist: artistId })
+      .populate('artist', 'username _id profilePic bio')
+      .sort({ createdAt: -1 });
+
+    return res.json({ artist, songs });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener perfil del artista' });
+  }
+});
+
+app.put('/users/:userId/profile', (req, res) => {
+  upload.single('profilePic')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      console.error('Error subiendo foto de perfil:', uploadErr.message || uploadErr);
+      return res.status(500).json({ error: 'Error al subir foto de perfil' });
+    }
+
+    try {
+      const { userId } = req.params;
+      const { bio } = req.body;
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      if (typeof bio === 'string') {
+        user.bio = bio;
+      }
+
+      if (req.file?.path) {
+        user.profilePic = req.file.path;
+      }
+
+      await user.save();
+
+      return res.json({
+        message: 'Perfil actualizado',
+        user: {
+          _id: user._id,
+          username: user.username,
+          role: user.role,
+          bio: user.bio,
+          profilePic: user.profilePic,
+        },
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al actualizar perfil' });
+    }
+  });
+});
