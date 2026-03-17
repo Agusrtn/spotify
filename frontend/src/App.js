@@ -140,12 +140,19 @@ function App() {
               {allSongs && allSongs.length > 0 ? (
                 allSongs.map((song, idx) => (
                   <div key={song._id} className="group relative bg-white/5 border border-white/5 rounded-[35px] hover:bg-white/10 transition-all cursor-pointer overflow-hidden">
-                    <div className="aspect-square bg-gray-800 rounded-[25px] flex items-center justify-center overflow-hidden relative">
-                      {song.coverUrl ? (
-                        <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
-                      ) : (
-                        <Disc className="text-yellow-400/40" size={80} />
-                      )}
+                    <div className="aspect-square flex items-center justify-center overflow-hidden relative bg-gradient-to-br from-gray-800 to-gray-900">
+                      {song.coverUrl && song.coverUrl.trim() !== '' ? (
+                        <img 
+                          src={song.coverUrl} 
+                          alt={song.title} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextElementSibling.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <Disc className="text-yellow-400/40" size={80} />
                     </div>
                     <div className="p-4">
                       <h4 className="font-black uppercase italic text-sm line-clamp-2">{song.title}</h4>
@@ -268,7 +275,7 @@ const UploadModal = ({ isOpen, onClose, userId, fetchMySongs }) => {
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!audioFile || !title) return alert("¡Nombre y Audio son obligatorios!");
+    if (!audioFile || !title || !coverFile) return alert("¡Nombre, Audio y Carátula son obligatorios!");
     if (!userId) return alert("Sesion invalida. Cierra sesion y vuelve a entrar.");
     
     setLoading(true);
@@ -317,10 +324,10 @@ const UploadModal = ({ isOpen, onClose, userId, fetchMySongs }) => {
             </p>
           </div>
 
-          <div className="relative border border-white/5 bg-black/40 rounded-2xl p-4 text-center">
-            <input type="file" accept="image/*" onChange={(e) => setCoverFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
-            <p className="text-[10px] font-bold uppercase text-gray-700">
-              {coverFile ? `🖼️ PORTADA: ${coverFile.name}` : "SUBIR CARÁTULA (OPCIONAL)"}
+          <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-8 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
+            <input type="file" accept="image/*" required onChange={(e) => setCoverFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+              {coverFile ? `✅ 🖼️ ${coverFile.name}` : "SELECCIONAR CARÁTULA"}
             </p>
           </div>
           

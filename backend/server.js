@@ -99,6 +99,14 @@ app.post('/upload-song', (req, res) => {
       if (!title) return res.status(400).json({ error: 'El titulo es obligatorio' });
       if (!artistId) return res.status(400).json({ error: 'ID de artista faltante. Vuelve a iniciar sesion.' });
       if (!req.files || !req.files.audio) return res.status(400).json({ error: 'Falta el archivo de audio' });
+      if (!req.files || !req.files.cover) return res.status(400).json({ error: 'Falta la carátula' });
+      
+      console.log('📁 Archivos recibidos:', { 
+        hasAudio: !!req.files.audio, 
+        hasCover: !!req.files.cover,
+        audioPath: req.files.audio?.[0]?.path,
+        coverPath: req.files.cover?.[0]?.path
+      });
 
       if (!process.env.CLOUDINARY_NAME || !process.env.CLOUDINARY_KEY || !process.env.CLOUDINARY_SECRET) {
         return res.status(500).json({ error: 'Servidor no configurado: Cloudinary sin credenciales' });
