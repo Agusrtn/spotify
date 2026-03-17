@@ -216,6 +216,24 @@ app.get('/search', async (req, res) => {
   }
 });
 
+app.get('/songs', async (req, res) => {
+  try {
+    const artistId = req.query.artist;
+    if (!artistId) {
+      return res.status(400).json({ error: 'Falta ID de artista' });
+    }
+
+    const songs = await Song.find({ artist: artistId })
+      .populate('artist', 'username')
+      .sort({ createdAt: -1 });
+
+    return res.json(songs);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener canciones' });
+  }
+});
+
 const PORT = Number(process.env.PORT) || 10000;
 const server = app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
 

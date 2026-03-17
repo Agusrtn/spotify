@@ -9,6 +9,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('inicio');
   const [searchResults, setSearchResults] = useState([]);
+  const [mySongs, setMySongs] = useState([]);
   // 1. ESTADO PARA EL MODAL: Necesario para que el botón de Layout lo abra
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -19,6 +20,16 @@ function App() {
       const data = await res.json();
       setSearchResults(data);
     } catch (err) { console.error(err); }
+  };
+
+  const fetchMySongs = async (artistId) => {
+    try {
+      const res = await fetch(`${API_URL}/songs?artist=${artistId}`);
+      if(res.ok) {
+        const data = await res.json();
+        setMySongs(data);
+      }
+    } catch (err) { console.error('Error fetching songs:', err); }
   };
 
   if (!user) return <Login onLogin={(userData) => setUser(userData)} />;
@@ -91,6 +102,32 @@ function App() {
              <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografía de Artista</p>
              <p className="text-xl text-gray-300 italic">"{user.bio || 'Nueva leyenda de RTN MUSIC'}"</p>
           </div>
+
+          {(user.role === 'artist' || user.role === 'admin') && (
+            <div className="mt-8 bg-white/5 p-8 rounded-[40px] border border-white/5">
+              <div className="flex justify-between items-center mb-6">
+                <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Mis Canciones</p>
+                <button onClick={() => fetchMySongs(user._id)} className="text-yellow-400 text-xs font-bold hover:underline">
+                  Refrescar
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {mySongs && mySongs.length > 0 ? (
+                  mySongs.map(song => (
+                    <div key={song._id} className="bg-black/50 border border-white/5 p-4 rounded-[20px]">
+                      <div className="aspect-square bg-yellow-400/10 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
+                        {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <span className="text-gray-600 text-2xl">🎵</span>}
+                      </div>
+                      <h4 className="font-bold text-sm uppercase mb-1">{song.title}</h4>
+                      <p className="text-[10px] text-gray-400 line-clamp-2">{song.description || 'Sin descripción'}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-sm col-span-full">Aún no has subido canciones. ¡Sube tu primer hit!</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -98,7 +135,8 @@ function App() {
       <UploadModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        userId={user._id} 
+        userId={user._id}
+        fetchMySongs={fetchMySongs}
       />
 
     </Layout>
@@ -106,7 +144,7 @@ function App() {
 }
 
 // 4. COMPONENTE MODAL (Fuera de App para limpieza)
-const UploadModal = ({ isOpen, onClose, userId }) => {
+const UploadModal = ({ isOpen, onClose, userId, fetchMySongs }) => {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [audioFile, setAudioFile] = useState(null);
@@ -137,7 +175,9 @@ const UploadModal = ({ isOpen, onClose, userId }) => {
       if (res.ok) {
         alert("¡HIT PUBLICADO EN RTN!");
         onClose();
-        window.location.reload(); // Para refrescar y ver cambios
+        setTimeout(() => {
+          if (userId) fetchMySongs(userId);
+        }, 500);
       } else {
         alert(data.error || "Error al subir el archivo");
       }
