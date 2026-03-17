@@ -19,6 +19,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Modelos
 const User = require('./models/User'); 
 const Song = require('./models/Song');
+const Playlist = require('./models/Playlist');
 
 // Conexión a MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -94,12 +95,28 @@ app.post('/upload-song', (req, res) => {
     }
 
     try {
-      const { title, description, lyrics, artistId } = req.body;
+      const { title, description, lyrics, artistId, uploaderId } = req.body;
 
       if (!title) return res.status(400).json({ error: 'El titulo es obligatorio' });
       if (!artistId) return res.status(400).json({ error: 'ID de artista faltante. Vuelve a iniciar sesion.' });
       if (!req.files || !req.files.audio) return res.status(400).json({ error: 'Falta el archivo de audio' });
       if (!req.files || !req.files.cover) return res.status(400).json({ error: 'Falta la carátula' });
+
+      const targetArtist = await User.findById(artistId).select('_id role');
+      if (!targetArtist) {
+        return res.status(404).json({ error: 'Artista no encontrado' });
+      }
+
+      if (targetArtist.role !== 'artist' && targetArtist.role !== 'admin') {
+        return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de artista' });
+      }
+
+      if (uploaderId && String(uploaderId) !== String(artistId)) {
+        const uploader = await User.findById(uploaderId).select('_id role');
+        if (!uploader || uploader.role !== 'admin') {
+          return res.status(403).json({ error: 'Solo admins pueden subir canciones para otros artistas' });
+        }
+      }
       
       console.log('📁 Archivos recibidos:', { 
         hasAudio: !!req.files.audio, 
@@ -122,7 +139,8 @@ app.post('/upload-song', (req, res) => {
       });
 
       await newSong.save();
-      return res.status(201).json({ message: 'Hit publicado', song: newSong });
+      const populatedSong = await Song.findById(newSong._id).populate('artist', 'username _id profilePic bio');
+      return res.status(201).json({ message: 'Hit publicado', song: populatedSong });
     } catch (error) {
       console.error('Error en /upload-song:', error.message);
       return res.status(500).json({ error: `Error al subir el archivo: ${error.message}` });
@@ -147,7 +165,7 @@ app.post('/register', async (req, res) => {
     const newUser = new User({
       username,
       password: hashedPassword,
-      role: 'artist',
+      role: 'user',
     });
 
     await newUser.save();
@@ -296,6 +314,108 @@ app.get('/all-songs', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener canciones' });
+  }
+});
+
+app.get('/playlists', async (req, res) => {
+  try {
+    const playlists = await Playlist.find({ isPublic: true })
+      .populate('creator', 'username _id')
+      .populate({
+        path: 'songs',
+        populate: { path: 'artist', select: 'username _id profilePic' },
+      })
+      .sort({ createdAt: -1 });
+
+    return res.json(playlists);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener playlists' });
+  }
+});
+
+app.post('/admin/playlists', async (req, res) => {
+  try {
+    const { requesterId, name, description, coverUrl, songIds, isDefault } = req.body;
+    if (!requesterId || !name) {
+      return res.status(400).json({ error: 'Faltan datos para crear playlist' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden crear playlists' });
+    }
+
+    const playlist = new Playlist({
+      name,
+      description: description || '',
+      coverUrl: coverUrl || '',
+      creator: requesterId,
+      songs: Array.isArray(songIds) ? songIds : [],
+      isDefault: Boolean(isDefault),
+      isPublic: true,
+    });
+
+    await playlist.save();
+    const populatedPlaylist = await Playlist.findById(playlist._id)
+      .populate('creator', 'username _id')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+
+    return res.status(201).json({ message: 'Playlist creada', playlist: populatedPlaylist });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al crear playlist' });
+  }
+});
+
+app.put('/admin/playlists/:playlistId', async (req, res) => {
+  try {
+    const { playlistId } = req.params;
+    const { requesterId, name, description, coverUrl, songIds, isDefault } = req.body;
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden editar playlists' });
+    }
+
+    const playlist = await Playlist.findById(playlistId);
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist no encontrada' });
+    }
+
+    if (typeof name === 'string' && name.trim()) playlist.name = name.trim();
+    if (typeof description === 'string') playlist.description = description;
+    if (typeof coverUrl === 'string') playlist.coverUrl = coverUrl;
+    if (Array.isArray(songIds)) playlist.songs = songIds;
+    if (typeof isDefault === 'boolean') playlist.isDefault = isDefault;
+
+    await playlist.save();
+    const populatedPlaylist = await Playlist.findById(playlist._id)
+      .populate('creator', 'username _id')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+
+    return res.json({ message: 'Playlist actualizada', playlist: populatedPlaylist });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar playlist' });
+  }
+});
+
+app.delete('/admin/playlists/:playlistId', async (req, res) => {
+  try {
+    const { playlistId } = req.params;
+    const { requesterId } = req.body;
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden eliminar playlists' });
+    }
+
+    await Playlist.findByIdAndDelete(playlistId);
+    return res.json({ message: 'Playlist eliminada' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al eliminar playlist' });
   }
 });
 

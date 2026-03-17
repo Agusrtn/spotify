@@ -65,7 +65,7 @@ const Login = ({ onLogin }) => {
             {isRegistering ? 'Join the' : 'Join the'} <span className="text-yellow-400">CREW</span>
           </h1>
           <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">
-            {isRegistering ? (isAdminRegister ? 'Crear cuenta de administrador' : 'Registro de artista') : 'Vibe Check 2026'}
+            {isRegistering ? (isAdminRegister ? 'Crear cuenta de administrador' : 'Registro de usuario') : 'Vibe Check 2026'}
           </p>
         </div>
 
@@ -142,7 +142,7 @@ const Login = ({ onLogin }) => {
 
         {isRegistering && !isAdminRegister && (
           <p className="text-center text-gray-500 text-[10px] mt-3 font-medium uppercase tracking-wide">
-            El registro normal crea cuentas con rol ARTIST por defecto.
+            El registro normal crea cuentas con rol USER por defecto.
           </p>
         )}
       </form>

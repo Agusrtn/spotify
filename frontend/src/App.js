@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { API_URL } from './config';
-import { Disc, Play, X, Edit3, Save, Trash2 } from 'lucide-react';
+import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check } from 'lucide-react';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -13,6 +13,7 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [allSongs, setAllSongs] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -20,6 +21,7 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [selectedSong, setSelectedSong] = useState(null);
+  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [artistProfile, setArtistProfile] = useState(null);
 
   const [settingsBio, setSettingsBio] = useState('');
@@ -27,6 +29,8 @@ function App() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [playlistForm, setPlaylistForm] = useState({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
+  const [playlistSaving, setPlaylistSaving] = useState(false);
 
   const audioRef = useRef(null);
 
@@ -42,9 +46,34 @@ function App() {
     }
   };
 
+  const fetchPlaylists = async () => {
+    try {
+      const res = await fetch(`${API_URL}/playlists`);
+      if (res.ok) {
+        const data = await res.json();
+        setPlaylists(data);
+      }
+    } catch (err) {
+      console.error('Error fetching playlists:', err);
+    }
+  };
+
   useEffect(() => {
     fetchAllSongs();
+    fetchPlaylists();
   }, []);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchAllSongs();
+      fetchPlaylists();
+      if (user?._id && (user.role === 'artist' || user.role === 'admin')) {
+        fetchMySongs(user._id);
+      }
+    }, 8000);
+
+    return () => clearInterval(intervalId);
+  }, [user]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
@@ -64,9 +93,23 @@ function App() {
     if (view === 'admin' && user?.role === 'admin') {
       fetchMembers();
       fetchAllSongs();
+      fetchPlaylists();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, user]);
+
+  useEffect(() => {
+    if (user?._id && (user.role === 'artist' || user.role === 'admin')) {
+      fetchMySongs(user._id);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (isModalOpen && user?.role === 'admin') {
+      fetchMembers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isModalOpen, user]);
 
   const fetchMySongs = async (artistId) => {
     try {
@@ -126,8 +169,12 @@ function App() {
       if (!res.ok) return alert(data.error || 'No se pudo guardar la cancion');
 
       setSelectedSong(data.song);
-      await fetchAllSongs();
-      await fetchMySongs(user._id);
+      setAllSongs((prev) => prev.map((song) => (song._id === songId ? data.song : song)));
+      setMySongs((prev) => prev.map((song) => (song._id === songId ? data.song : song)));
+      setPlaylists((prev) => prev.map((playlist) => ({
+        ...playlist,
+        songs: playlist.songs?.map((song) => (song._id === songId ? data.song : song)),
+      })));
       if (view === 'artist' && artistProfile?.artist?._id) await openArtistProfile(artistProfile.artist._id);
       alert('Cambios guardados');
     } catch (err) {
@@ -148,6 +195,109 @@ function App() {
       if (res.ok) setSearchResults(data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const resetPlaylistForm = () => {
+    setPlaylistForm({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
+  };
+
+  const startEditPlaylist = (playlist) => {
+    setPlaylistForm({
+      id: playlist._id,
+      name: playlist.name || '',
+      description: playlist.description || '',
+      coverUrl: playlist.coverUrl || '',
+      songIds: playlist.songs?.map((song) => song._id) || [],
+      isDefault: Boolean(playlist.isDefault),
+    });
+  };
+
+  const togglePlaylistSong = (songId) => {
+    setPlaylistForm((prev) => ({
+      ...prev,
+      songIds: prev.songIds.includes(songId)
+        ? prev.songIds.filter((id) => id !== songId)
+        : [...prev.songIds, songId],
+    }));
+  };
+
+  const savePlaylist = async (e) => {
+    e.preventDefault();
+    if (!playlistForm.name.trim()) {
+      alert('La playlist necesita nombre');
+      return;
+    }
+
+    setPlaylistSaving(true);
+    try {
+      const endpoint = playlistForm.id
+        ? `${API_URL}/admin/playlists/${playlistForm.id}`
+        : `${API_URL}/admin/playlists`;
+      const method = playlistForm.id ? 'PUT' : 'POST';
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requesterId: user._id,
+          name: playlistForm.name,
+          description: playlistForm.description,
+          coverUrl: playlistForm.coverUrl,
+          songIds: playlistForm.songIds,
+          isDefault: playlistForm.isDefault,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || 'No se pudo guardar la playlist');
+        return;
+      }
+
+      if (playlistForm.id) {
+        setPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? data.playlist : playlist)));
+      } else {
+        setPlaylists((prev) => [data.playlist, ...prev]);
+      }
+
+      resetPlaylistForm();
+      alert('Playlist guardada');
+    } catch (err) {
+      console.error(err);
+      alert('Error al guardar playlist');
+    } finally {
+      setPlaylistSaving(false);
+    }
+  };
+
+  const deletePlaylist = async (playlistId) => {
+    const confirmed = window.confirm('¿Eliminar esta playlist?');
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`${API_URL}/admin/playlists/${playlistId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || 'No se pudo eliminar la playlist');
+        return;
+      }
+
+      setPlaylists((prev) => prev.filter((playlist) => playlist._id !== playlistId));
+      if (selectedPlaylist?._id === playlistId) {
+        setSelectedPlaylist(null);
+      }
+      if (playlistForm.id === playlistId) {
+        resetPlaylistForm();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error al eliminar playlist');
     }
   };
 
@@ -240,8 +390,12 @@ function App() {
         setSelectedSong(null);
       }
 
-      await fetchAllSongs();
-      await fetchMySongs(user._id);
+      setAllSongs((prev) => prev.filter((song) => song._id !== songId));
+      setMySongs((prev) => prev.filter((song) => song._id !== songId));
+      setPlaylists((prev) => prev.map((playlist) => ({
+        ...playlist,
+        songs: playlist.songs?.filter((song) => song._id !== songId),
+      })));
       if (artistProfile?.artist?._id) {
         await openArtistProfile(artistProfile.artist._id);
       }
@@ -280,6 +434,39 @@ function App() {
           <h1 className="text-7xl font-black mb-8 tracking-tighter uppercase italic">
             EXPLORA EL <span className="text-yellow-400 font-black">SONIDO</span>
           </h1>
+
+          <section className="mb-14">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-3xl font-black tracking-tight">Especialmente para ti</h3>
+              <span className="text-sm text-gray-400 font-bold">Mostrar todos</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              {playlists.filter((playlist) => playlist.isDefault).slice(0, 4).map((playlist) => (
+                <button
+                  key={playlist._id}
+                  onClick={() => setSelectedPlaylist(playlist)}
+                  className="text-left bg-white/5 border border-white/10 rounded-3xl overflow-hidden hover:bg-white/10 transition-all"
+                >
+                  <div className="aspect-square bg-black/30 overflow-hidden">
+                    {playlist.coverUrl ? (
+                      <img src={playlist.coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+                    ) : playlist.songs?.[0]?.coverUrl ? (
+                      <img src={playlist.songs[0].coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-500 via-pink-500 to-purple-500">
+                        <Disc size={52} className="text-white/80" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <p className="font-black text-2xl leading-tight mb-2">{playlist.name}</p>
+                    <p className="text-gray-400 text-sm line-clamp-2">{playlist.description || 'Playlist oficial de RTN Music'}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
 
           <section className="mt-12">
             <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-6">Novedades en la Crew</h3>
@@ -478,6 +665,101 @@ function App() {
 
           <section className="bg-white/5 p-8 rounded-[40px] border border-white/10">
             <div className="flex items-center justify-between mb-6">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Playlists por defecto</p>
+              <button onClick={resetPlaylistForm} className="text-yellow-400 text-xs font-bold hover:underline flex items-center gap-2"><Plus size={14} /> Nueva playlist</button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-8">
+              <form onSubmit={savePlaylist} className="space-y-4 bg-black/30 rounded-3xl border border-white/10 p-5">
+                <input
+                  value={playlistForm.name}
+                  onChange={(e) => setPlaylistForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Nombre de la playlist"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                />
+                <textarea
+                  value={playlistForm.description}
+                  onChange={(e) => setPlaylistForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Descripción"
+                  className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                />
+                <input
+                  value={playlistForm.coverUrl}
+                  onChange={(e) => setPlaylistForm((prev) => ({ ...prev, coverUrl: e.target.value }))}
+                  placeholder="URL de portada (opcional)"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                />
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={playlistForm.isDefault}
+                    onChange={(e) => setPlaylistForm((prev) => ({ ...prev, isDefault: e.target.checked }))}
+                  />
+                  Mostrar como playlist por defecto
+                </label>
+
+                <div className="max-h-80 overflow-y-auto space-y-2 pr-2">
+                  {allSongs.map((song) => (
+                    <button
+                      key={song._id}
+                      type="button"
+                      onClick={() => togglePlaylistSong(song._id)}
+                      className={`w-full flex items-center gap-3 rounded-2xl p-3 border transition ${playlistForm.songIds.includes(song._id) ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/10 bg-black/20 hover:bg-white/5'}`}
+                    >
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                        {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={18} className="text-yellow-400/40" /></div>}
+                      </div>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-sm font-bold truncate">{song.title}</p>
+                        <p className="text-[10px] text-gray-400 uppercase truncate">{song.artist?.username || 'Artista'}</p>
+                      </div>
+                      {playlistForm.songIds.includes(song._id) && <Check size={16} className="text-yellow-400" />}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex gap-3">
+                  <button disabled={playlistSaving} className="flex-1 bg-yellow-400 text-black font-black py-3 rounded-2xl uppercase text-xs tracking-widest disabled:opacity-60">
+                    {playlistSaving ? 'Guardando...' : playlistForm.id ? 'Actualizar playlist' : 'Crear playlist'}
+                  </button>
+                  {playlistForm.id && (
+                    <button type="button" onClick={resetPlaylistForm} className="px-4 py-3 rounded-2xl bg-white/10 text-white font-bold text-xs uppercase tracking-widest">
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              <div className="space-y-3">
+                {playlists.length > 0 ? playlists.map((playlist) => (
+                  <div key={playlist._id} className="bg-black/30 border border-white/10 rounded-3xl p-4 flex gap-4">
+                    <div className="w-24 h-24 rounded-2xl overflow-hidden bg-black/40 flex-shrink-0">
+                      {playlist.coverUrl ? (
+                        <img src={playlist.coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+                      ) : playlist.songs?.[0]?.coverUrl ? (
+                        <img src={playlist.songs[0].coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center"><Disc size={28} className="text-yellow-400/40" /></div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-xl truncate">{playlist.name}</p>
+                      <p className="text-sm text-gray-400 line-clamp-2">{playlist.description || 'Sin descripción'}</p>
+                      <p className="text-[10px] text-yellow-400 font-bold uppercase tracking-widest mt-2">{playlist.songs?.length || 0} canciones</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <button onClick={() => setSelectedPlaylist(playlist)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase">Ver</button>
+                      <button onClick={() => startEditPlaylist(playlist)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase">Editar</button>
+                      <button onClick={() => deletePlaylist(playlist._id)} className="px-3 py-2 rounded-xl bg-red-600/80 hover:bg-red-600 text-xs font-bold uppercase">Eliminar</button>
+                    </div>
+                  </div>
+                )) : <p className="text-gray-500 text-sm">No hay playlists todavía.</p>}
+              </div>
+            </div>
+          </section>
+
+          <section className="bg-white/5 p-8 rounded-[40px] border border-white/10">
+            <div className="flex items-center justify-between mb-6">
               <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Miembros registrados</p>
               <button onClick={fetchMembers} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar</button>
             </div>
@@ -611,9 +893,18 @@ function App() {
       <UploadModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        user={user}
+        members={members}
         userId={user._id}
         fetchMySongs={fetchMySongs}
         fetchAllSongs={fetchAllSongs}
+        fetchPlaylists={fetchPlaylists}
+        onSongCreated={(song) => {
+          setAllSongs((prev) => [song, ...prev.filter((item) => item._id !== song._id)]);
+          if (String(song.artist?._id) === String(user._id)) {
+            setMySongs((prev) => [song, ...prev.filter((item) => item._id !== song._id)]);
+          }
+        }}
       />
 
       <SongDetailPanel
@@ -626,6 +917,16 @@ function App() {
         }}
         onSave={handleSaveSongChanges}
         onDelete={handleDeleteSong}
+        onOpenArtist={openArtistProfile}
+      />
+
+      <PlaylistDetailPanel
+        playlist={selectedPlaylist}
+        onClose={() => setSelectedPlaylist(null)}
+        onPlaySong={(song) => {
+          const idx = allSongs.findIndex((item) => item._id === song._id);
+          playSong(song, idx >= 0 ? idx : 0);
+        }}
         onOpenArtist={openArtistProfile}
       />
     </Layout>
@@ -786,15 +1087,76 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
   );
 };
 
-const UploadModal = ({ isOpen, onClose, userId, fetchMySongs, fetchAllSongs }) => {
+const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) => {
+  if (!playlist) return null;
+
+  return (
+    <div className="fixed inset-0 z-[105] bg-black/85 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
+      <div className="max-w-6xl mx-auto bg-gradient-to-b from-[#5a0b0b] via-[#2c0909] to-[#0a0a0a] rounded-3xl border border-white/10 overflow-hidden">
+        <div className="p-6 md:p-10 flex flex-col md:flex-row gap-6 items-end">
+          <div className="w-48 h-48 md:w-64 md:h-64 rounded-2xl overflow-hidden bg-black/30 border border-white/10">
+            {playlist.coverUrl ? (
+              <img src={playlist.coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+            ) : playlist.songs?.[0]?.coverUrl ? (
+              <img src={playlist.songs[0].coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center"><Disc size={72} className="text-yellow-400/40" /></div>
+            )}
+          </div>
+          <div className="flex-1">
+            <p className="text-sm uppercase tracking-[0.3em] text-gray-300 font-black">Lista pública</p>
+            <h2 className="text-5xl md:text-7xl font-black tracking-tight">{playlist.name}</h2>
+            <p className="mt-3 text-gray-200 text-lg">{playlist.description || 'Playlist oficial de RTN Music'}</p>
+            <p className="mt-4 text-white/70 font-semibold">{playlist.songs?.length || 0} canciones</p>
+          </div>
+          <button onClick={onClose} className="self-start md:self-auto p-3 rounded-xl bg-black/30 hover:bg-black/50 transition"><X size={20} /></button>
+        </div>
+
+        <div className="border-t border-white/10 px-6 md:px-10 py-6 bg-black/20 space-y-3">
+          {playlist.songs?.length ? playlist.songs.map((song, index) => (
+            <div key={song._id} className="grid grid-cols-[32px_56px_minmax(0,1fr)_120px_60px] items-center gap-4 py-3 border-b border-white/5">
+              <span className="text-gray-500 font-bold">{index + 1}</span>
+              <div className="w-14 h-14 rounded-lg overflow-hidden bg-black/40">
+                {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={20} className="text-yellow-400/40" /></div>}
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold truncate">{song.title}</p>
+                <button type="button" onClick={() => song.artist?._id && onOpenArtist(song.artist._id)} className="text-xs text-gray-400 hover:text-yellow-300 truncate">
+                  {song.artist?.username || 'Artista'}
+                </button>
+              </div>
+              <button onClick={() => onPlaySong(song)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase">
+                Reproducir
+              </button>
+              <span className="text-right text-gray-500 text-sm">{song.audioUrl ? 'MP3' : '--'}</span>
+            </div>
+          )) : <p className="text-gray-500">Esta playlist no tiene canciones.</p>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fetchAllSongs, fetchPlaylists, onSongCreated }) => {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [lyrics, setLyrics] = useState('');
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [artistId, setArtistId] = useState(userId);
+
+  useEffect(() => {
+    if (isOpen) {
+      setArtistId(userId);
+    }
+  }, [isOpen, userId]);
 
   if (!isOpen) return null;
+
+  const artistOptions = user?.role === 'admin'
+    ? members.filter((member) => member.role === 'artist' || member.role === 'admin')
+    : [];
 
   const handleUpload = async (e) => {
     e.preventDefault();
@@ -806,7 +1168,8 @@ const UploadModal = ({ isOpen, onClose, userId, fetchMySongs, fetchAllSongs }) =
     formData.append('title', title);
     formData.append('description', desc);
     formData.append('lyrics', lyrics);
-    formData.append('artistId', userId);
+    formData.append('artistId', artistId || userId);
+    formData.append('uploaderId', userId);
     formData.append('audio', audioFile);
     formData.append('cover', coverFile);
 
@@ -815,11 +1178,21 @@ const UploadModal = ({ isOpen, onClose, userId, fetchMySongs, fetchAllSongs }) =
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         alert('Hit publicado');
+        if (data.song) {
+          onSongCreated(data.song);
+        }
         onClose();
-        setTimeout(() => {
+        if (String(artistId || userId) === String(userId)) {
           fetchMySongs(userId);
-          fetchAllSongs();
-        }, 500);
+        }
+        fetchAllSongs();
+        fetchPlaylists();
+        setTitle('');
+        setDesc('');
+        setLyrics('');
+        setAudioFile(null);
+        setCoverFile(null);
+        setArtistId(userId);
       } else {
         alert(data.error || 'Error al subir el archivo');
       }
@@ -839,6 +1212,18 @@ const UploadModal = ({ isOpen, onClose, userId, fetchMySongs, fetchAllSongs }) =
         </h2>
 
         <div className="space-y-4">
+          {user?.role === 'admin' && (
+            <select
+              value={artistId}
+              onChange={(e) => setArtistId(e.target.value)}
+              className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
+            >
+              {artistOptions.map((member) => (
+                <option key={member._id} value={member._id}>{member.username} ({member.role})</option>
+              ))}
+            </select>
+          )}
+
           <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-8 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
             <input type="file" accept="audio/*" required onChange={(e) => setAudioFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{audioFile ? `OK ${audioFile.name}` : 'SELECCIONAR MP3'}</p>
