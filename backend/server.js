@@ -94,7 +94,7 @@ app.post('/upload-song', (req, res) => {
     }
 
     try {
-      const { title, description, artistId } = req.body;
+      const { title, description, lyrics, artistId } = req.body;
 
       if (!title) return res.status(400).json({ error: 'El titulo es obligatorio' });
       if (!artistId) return res.status(400).json({ error: 'ID de artista faltante. Vuelve a iniciar sesion.' });
@@ -115,6 +115,7 @@ app.post('/upload-song', (req, res) => {
       const newSong = new Song({
         title,
         description: description || '',
+        lyrics: lyrics || '',
         artist: artistId,
         audioUrl: req.files.audio[0].path,
         coverUrl: req.files.cover ? req.files.cover[0].path : '',
@@ -265,4 +266,41 @@ server.on('error', (err) => {
     console.error('❌ Error del servidor:', err);
   }
   process.exit(1);
+});
+
+app.put('/songs/:songId', async (req, res) => {
+  try {
+    const { songId } = req.params;
+    const { title, description, lyrics, userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Falta userId para autorizar edición' });
+    }
+
+    const user = await User.findById(userId).select('_id role');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const song = await Song.findById(songId);
+    if (!song) {
+      return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+
+    const canEdit = user.role === 'admin' || String(song.artist) === String(user._id);
+    if (!canEdit) {
+      return res.status(403).json({ error: 'No tienes permisos para editar esta canción' });
+    }
+
+    song.title = (title || '').trim() || song.title;
+    song.description = description || '';
+    song.lyrics = lyrics || '';
+    await song.save();
+
+    const updatedSong = await Song.findById(songId).populate('artist', 'username _id');
+    return res.json({ message: 'Canción actualizada', song: updatedSong });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar canción' });
+  }
 });
