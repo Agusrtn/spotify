@@ -118,6 +118,7 @@ const UploadModal = ({ isOpen, onClose, userId }) => {
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!audioFile || !title) return alert("¡Nombre y Audio son obligatorios!");
+    if (!userId) return alert("Sesion invalida. Cierra sesion y vuelve a entrar.");
     
     setLoading(true);
     const formData = new FormData();
@@ -132,15 +133,17 @@ const UploadModal = ({ isOpen, onClose, userId }) => {
         method: 'POST',
         body: formData,
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         alert("¡HIT PUBLICADO EN RTN!");
         onClose();
         window.location.reload(); // Para refrescar y ver cambios
       } else {
-        alert("Error al subir el archivo");
+        alert(data.error || "Error al subir el archivo");
       }
     } catch (err) {
       console.error(err);
+      alert("No se pudo conectar con el servidor al subir el archivo");
     } finally {
       setLoading(false);
     }
