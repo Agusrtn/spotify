@@ -76,6 +76,7 @@ function App() {
   const [playlistForm, setPlaylistForm] = useState({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
   const [playlistSaving, setPlaylistSaving] = useState(false);
   const [albumForm, setAlbumForm] = useState({ id: null, title: '', description: '', coverUrl: '', songIds: [] });
+  // eslint-disable-next-line no-unused-vars
   const [albumSaving, setAlbumSaving] = useState(false);
 
   const audioRef = useRef(null);
@@ -386,6 +387,7 @@ function App() {
     setAlbumForm({ id: null, title: '', description: '', coverUrl: '', songIds: [] });
   };
 
+  // eslint-disable-next-line no-unused-vars
   const startEditAlbum = (album) => {
     setAlbumForm({
       id: album._id,
@@ -396,6 +398,7 @@ function App() {
     });
   };
 
+  // eslint-disable-next-line no-unused-vars
   const toggleAlbumSong = (songId) => {
     setAlbumForm((prev) => ({
       ...prev,
@@ -405,6 +408,7 @@ function App() {
     }));
   };
 
+  // eslint-disable-next-line no-unused-vars
   const saveAlbum = async (e) => {
     e.preventDefault();
     if (!albumForm.title.trim()) {
@@ -453,6 +457,7 @@ function App() {
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const deleteAlbum = async (albumId) => {
     const confirmed = window.confirm('¿Eliminar este álbum?');
     if (!confirmed) return;
