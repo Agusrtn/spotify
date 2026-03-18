@@ -1534,7 +1534,8 @@ function App() {
         user={user}
         onPlaySong={(song) => {
           const idx = allSongs.findIndex((item) => item._id === song._id);
-          playSong(song, idx >= 0 ? idx : 0);
+          const playableSong = idx >= 0 ? allSongs[idx] : song;
+          playSong(playableSong, idx >= 0 ? idx : 0);
         }}
         onOpenArtist={openArtistProfile}
         onEdit={(album) => {
