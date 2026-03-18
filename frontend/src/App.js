@@ -90,6 +90,10 @@ function App() {
 
   const [allSongs, setAllSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
+  const [userPlaylists, setUserPlaylists] = useState([]);
+  const [userPlaylistsLoading, setUserPlaylistsLoading] = useState(false);
+  const [userPlaylistForm, setUserPlaylistForm] = useState({ id: null, name: '', description: '', coverUrl: '', isPublic: true, songIds: [] });
+  const [userPlaylistSaving, setUserPlaylistSaving] = useState(false);
   const [albums, setAlbums] = useState([]);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -111,6 +115,7 @@ function App() {
   const [notifications, setNotifications] = useState([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '' });
+  const [songToAddPlaylist, setSongToAddPlaylist] = useState(null);
 
   const [settingsBio, setSettingsBio] = useState('');
   const [settingsPic, setSettingsPic] = useState(null);
@@ -202,6 +207,151 @@ function App() {
       }
     } catch (err) {
       console.error('Error fetching playlists:', err);
+    }
+  };
+
+  const fetchUserPlaylists = async () => {
+    if (!user?._id) return;
+    setUserPlaylistsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/my-playlists?userId=${user._id}`);
+      const data = await res.json().catch(() => []);
+      if (!res.ok) {
+        showToast(data.error || 'No se pudieron cargar tus playlists', 'error');
+        return;
+      }
+      setUserPlaylists(data);
+    } catch (err) {
+      console.error('Error fetching user playlists:', err);
+      showToast('Error al cargar playlists personales', 'error');
+    } finally {
+      setUserPlaylistsLoading(false);
+    }
+  };
+
+  const resetUserPlaylistForm = () => {
+    setUserPlaylistForm({ id: null, name: '', description: '', coverUrl: '', isPublic: true, songIds: [] });
+  };
+
+  const startEditUserPlaylist = (playlist) => {
+    setUserPlaylistForm({
+      id: playlist._id,
+      name: playlist.name || '',
+      description: playlist.description || '',
+      coverUrl: playlist.coverUrl || '',
+      isPublic: Boolean(playlist.isPublic),
+      songIds: playlist.songs?.map((song) => song._id) || [],
+    });
+  };
+
+  const toggleUserPlaylistSong = (songId) => {
+    setUserPlaylistForm((prev) => ({
+      ...prev,
+      songIds: prev.songIds.includes(songId)
+        ? prev.songIds.filter((id) => id !== songId)
+        : [...prev.songIds, songId],
+    }));
+  };
+
+  const saveUserPlaylist = async (e) => {
+    e.preventDefault();
+    if (!userPlaylistForm.name.trim()) {
+      showToast('La playlist necesita nombre', 'error');
+      return;
+    }
+
+    setUserPlaylistSaving(true);
+    try {
+      const endpoint = userPlaylistForm.id
+        ? `${API_URL}/my-playlists/${userPlaylistForm.id}`
+        : `${API_URL}/my-playlists`;
+      const method = userPlaylistForm.id ? 'PUT' : 'POST';
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user._id,
+          name: userPlaylistForm.name,
+          description: userPlaylistForm.description,
+          coverUrl: userPlaylistForm.coverUrl,
+          songIds: userPlaylistForm.songIds,
+          isPublic: userPlaylistForm.isPublic,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo guardar la playlist', 'error');
+        return;
+      }
+
+      if (userPlaylistForm.id) {
+        setUserPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? data.playlist : playlist)));
+      } else {
+        setUserPlaylists((prev) => [data.playlist, ...prev]);
+      }
+
+      resetUserPlaylistForm();
+      showToast('Playlist personal guardada', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al guardar playlist personal', 'error');
+    } finally {
+      setUserPlaylistSaving(false);
+    }
+  };
+
+  const deleteUserPlaylist = async (playlistId) => {
+    const confirmed = await askConfirm('¿Eliminar esta playlist personal?', 'Eliminar playlist');
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`${API_URL}/my-playlists/${playlistId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo eliminar la playlist', 'error');
+        return;
+      }
+
+      setUserPlaylists((prev) => prev.filter((playlist) => playlist._id !== playlistId));
+      if (selectedPlaylist?._id === playlistId) {
+        setSelectedPlaylist(null);
+      }
+      if (userPlaylistForm.id === playlistId) {
+        resetUserPlaylistForm();
+      }
+      showToast('Playlist eliminada', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al eliminar playlist', 'error');
+    }
+  };
+
+  const addSongToUserPlaylist = async (playlistId, songId) => {
+    try {
+      const res = await fetch(`${API_URL}/my-playlists/${playlistId}/songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user._id, songId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo añadir canción', 'error');
+        return;
+      }
+
+      setUserPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? data.playlist : playlist)));
+      showToast('Canción añadida a playlist', 'success');
+      setSongToAddPlaylist(null);
+    } catch (err) {
+      console.error(err);
+      showToast('Error al añadir canción', 'error');
     }
   };
 
@@ -331,6 +481,7 @@ function App() {
     fetchAllSongs();
     fetchPlaylists();
     fetchAlbums();
+    if (user?._id) fetchUserPlaylists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -410,6 +561,9 @@ function App() {
       fetchAllSongs();
       fetchPlaylists();
       fetchAlbums();
+      if (user?._id) {
+        fetchUserPlaylists();
+      }
       if (user?._id && (user.role === 'artist' || user.role === 'admin')) {
         fetchMySongs(user._id);
       }
@@ -461,6 +615,10 @@ function App() {
       fetchMySongs(user._id);
       fetchArtistStats(user._id);
     }
+    if (user?._id) {
+      fetchUserPlaylists();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
@@ -1390,6 +1548,12 @@ function App() {
                 Álbumes
               </button>
               <button
+                onClick={() => setActiveArtistTab('playlists')}
+                className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeArtistTab === 'playlists' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                Playlists
+              </button>
+              <button
                 onClick={() => setIsAlbumModalOpen(true)}
                 className="ml-auto px-4 md:px-6 py-3 text-yellow-400 text-xl font-black hover:bg-yellow-400/10 rounded-xl transition-all"
                 title="Crear nuevo álbum"
@@ -1483,6 +1647,101 @@ function App() {
                 ) : (
                   <p className="text-gray-500 text-sm col-span-full">No tienes álbumes aún. Pulsa el <span className="text-yellow-400 font-bold">+</span> para crear uno.</p>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeArtistTab === 'playlists' && (
+            <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+              <div className="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-6 md:gap-8">
+                <form onSubmit={saveUserPlaylist} className="space-y-4 bg-black/30 rounded-3xl border border-white/10 p-5">
+                  <p className="text-xs font-black text-gray-500 uppercase tracking-widest">{userPlaylistForm.id ? 'Editar playlist personal' : 'Nueva playlist personal'}</p>
+                  <input
+                    value={userPlaylistForm.name}
+                    onChange={(e) => setUserPlaylistForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="Nombre de la playlist"
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                  />
+                  <textarea
+                    value={userPlaylistForm.description}
+                    onChange={(e) => setUserPlaylistForm((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="Descripción"
+                    className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                  />
+                  <input
+                    value={userPlaylistForm.coverUrl}
+                    onChange={(e) => setUserPlaylistForm((prev) => ({ ...prev, coverUrl: e.target.value }))}
+                    placeholder="URL de portada (opcional)"
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                  />
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={userPlaylistForm.isPublic}
+                      onChange={(e) => setUserPlaylistForm((prev) => ({ ...prev, isPublic: e.target.checked }))}
+                    />
+                    Playlist pública
+                  </label>
+
+                  <div className="max-h-72 overflow-y-auto space-y-2 pr-2">
+                    {allSongs.map((song) => (
+                      <button
+                        key={song._id}
+                        type="button"
+                        onClick={() => toggleUserPlaylistSong(song._id)}
+                        className={`w-full flex items-center gap-3 rounded-2xl p-3 border transition ${userPlaylistForm.songIds.includes(song._id) ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/10 bg-black/20 hover:bg-white/5'}`}
+                      >
+                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                          {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={18} className="text-yellow-400/40" /></div>}
+                        </div>
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className="text-sm font-bold truncate">{song.title}</p>
+                          <p className="text-[10px] text-gray-400 uppercase truncate">{song.artist?.username || 'Artista'}</p>
+                        </div>
+                        {userPlaylistForm.songIds.includes(song._id) && <Check size={16} className="text-yellow-400" />}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button disabled={userPlaylistSaving} className="flex-1 bg-yellow-400 text-black font-black py-3 rounded-2xl uppercase text-xs tracking-widest disabled:opacity-60">
+                      {userPlaylistSaving ? 'Guardando...' : userPlaylistForm.id ? 'Actualizar playlist' : 'Crear playlist'}
+                    </button>
+                    {userPlaylistForm.id && (
+                      <button type="button" onClick={resetUserPlaylistForm} className="px-4 py-3 rounded-2xl bg-white/10 text-white font-bold text-xs uppercase tracking-widest">
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+                </form>
+
+                <div className="space-y-3">
+                  {userPlaylistsLoading ? (
+                    <p className="text-gray-500 text-sm">Cargando tus playlists...</p>
+                  ) : userPlaylists.length > 0 ? userPlaylists.map((playlist) => (
+                    <div key={playlist._id} className="bg-black/30 border border-white/10 rounded-3xl p-4 flex gap-4">
+                      <div className="w-24 h-24 rounded-2xl overflow-hidden bg-black/40 flex-shrink-0">
+                        {playlist.coverUrl ? (
+                          <img src={playlist.coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+                        ) : playlist.songs?.[0]?.coverUrl ? (
+                          <img src={playlist.songs[0].coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center"><Disc size={28} className="text-yellow-400/40" /></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-xl truncate">{playlist.name}</p>
+                        <p className="text-sm text-gray-400 line-clamp-2">{playlist.description || 'Sin descripción'}</p>
+                        <p className="text-[10px] text-yellow-400 font-bold uppercase tracking-widest mt-2">{playlist.songs?.length || 0} canciones • {playlist.isPublic ? 'Pública' : 'Privada'}</p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <button onClick={() => setSelectedPlaylist(playlist)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase">Ver</button>
+                        <button onClick={() => startEditUserPlaylist(playlist)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase">Editar</button>
+                        <button onClick={() => deleteUserPlaylist(playlist._id)} className="px-3 py-2 rounded-xl bg-red-600/80 hover:bg-red-600 text-xs font-bold uppercase">Eliminar</button>
+                      </div>
+                    </div>
+                  )) : <p className="text-gray-500 text-sm">No tienes playlists personales todavía.</p>}
+                </div>
               </div>
             </div>
           )}
@@ -2053,6 +2312,14 @@ function App() {
         onDelete={handleDeleteSong}
         onOpenArtist={openArtistProfile}
         onShare={(songId) => shareLink('song', songId, 'la canción')}
+        onAddToPlaylist={(song) => setSongToAddPlaylist(song)}
+      />
+
+      <AddToPlaylistModal
+        song={songToAddPlaylist}
+        playlists={userPlaylists}
+        onClose={() => setSongToAddPlaylist(null)}
+        onAdd={(playlistId, songId) => addSongToUserPlaylist(playlistId, songId)}
       />
 
       <PlaylistDetailPanel
@@ -2143,7 +2410,7 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick }) => (
   </div>
 );
 
-const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpenArtist, onShare }) => {
+const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpenArtist, onShare, onAddToPlaylist }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -2203,6 +2470,9 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
             </button>
             <button onClick={() => onShare(song._id)} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
               <Share2 size={15} /> Compartir
+            </button>
+            <button onClick={() => onAddToPlaylist(song)} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
+              <Plus size={15} /> Agregar a playlist
             </button>
             {canEdit && !isEditing && (
               <button onClick={() => setIsEditing(true)} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
@@ -2581,6 +2851,40 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
           </button>
         </div>
       </form>
+    </div>
+  );
+};
+
+const AddToPlaylistModal = ({ song, playlists, onClose, onAdd }) => {
+  if (!song) return null;
+
+  return (
+    <div className="fixed inset-0 z-[205] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-lg bg-[#111] border border-white/10 rounded-3xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-xl font-black">Agregar a playlist</h3>
+          <button onClick={onClose} className="p-2 rounded-xl bg-white/10 hover:bg-white/20"><X size={16} /></button>
+        </div>
+
+        <p className="text-sm text-gray-400 mb-4">Canción: <span className="text-white font-bold">{song.title}</span></p>
+
+        <div className="max-h-80 overflow-y-auto space-y-2">
+          {playlists.length > 0 ? playlists.map((playlist) => {
+            const alreadyInPlaylist = playlist.songs?.some((item) => String(item._id) === String(song._id));
+            return (
+              <button
+                key={playlist._id}
+                onClick={() => onAdd(playlist._id, song._id)}
+                disabled={alreadyInPlaylist}
+                className={`w-full text-left rounded-2xl border p-3 transition ${alreadyInPlaylist ? 'border-white/10 bg-white/5 text-gray-500 cursor-not-allowed' : 'border-white/15 bg-black/30 hover:bg-white/10'}`}
+              >
+                <p className="font-bold truncate">{playlist.name}</p>
+                <p className="text-xs text-gray-400">{playlist.songs?.length || 0} canciones</p>
+              </button>
+            );
+          }) : <p className="text-gray-500 text-sm">No tienes playlists. Crea una en tu pestaña Playlists.</p>}
+        </div>
+      </div>
     </div>
   );
 };

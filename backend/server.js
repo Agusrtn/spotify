@@ -378,6 +378,208 @@ app.get('/playlists', async (req, res) => {
   }
 });
 
+app.get('/my-playlists', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ error: 'Falta userId' });
+    }
+
+    const playlists = await Playlist.find({ creator: userId })
+      .populate('creator', 'username _id')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } })
+      .sort({ createdAt: -1 });
+
+    return res.json(playlists);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener tus playlists' });
+  }
+});
+
+app.post('/my-playlists', async (req, res) => {
+  try {
+    const { userId, name, description, coverUrl, songIds, isPublic } = req.body;
+    if (!userId || !name) {
+      return res.status(400).json({ error: 'Faltan datos para crear playlist' });
+    }
+
+    const user = await User.findById(userId).select('_id');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const playlist = new Playlist({
+      name,
+      description: description || '',
+      coverUrl: coverUrl || '',
+      creator: userId,
+      songs: Array.isArray(songIds) ? songIds : [],
+      isDefault: false,
+      isPublic: typeof isPublic === 'boolean' ? isPublic : true,
+    });
+
+    await playlist.save();
+    const populatedPlaylist = await Playlist.findById(playlist._id)
+      .populate('creator', 'username _id')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+
+    return res.status(201).json({ message: 'Playlist creada', playlist: populatedPlaylist });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al crear tu playlist' });
+  }
+});
+
+app.put('/my-playlists/:playlistId', async (req, res) => {
+  try {
+    const { playlistId } = req.params;
+    const { userId, name, description, coverUrl, songIds, isPublic } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'Falta userId' });
+    }
+
+    const playlist = await Playlist.findById(playlistId);
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist no encontrada' });
+    }
+
+    const user = await User.findById(userId).select('_id role');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const canEdit = String(playlist.creator) === String(userId) || user.role === 'admin';
+    if (!canEdit) {
+      return res.status(403).json({ error: 'No tienes permisos para editar esta playlist' });
+    }
+
+    if (typeof name === 'string' && name.trim()) playlist.name = name.trim();
+    if (typeof description === 'string') playlist.description = description;
+    if (typeof coverUrl === 'string') playlist.coverUrl = coverUrl;
+    if (Array.isArray(songIds)) playlist.songs = songIds;
+    if (typeof isPublic === 'boolean') playlist.isPublic = isPublic;
+    playlist.isDefault = false;
+
+    await playlist.save();
+    const populatedPlaylist = await Playlist.findById(playlist._id)
+      .populate('creator', 'username _id')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+
+    return res.json({ message: 'Playlist actualizada', playlist: populatedPlaylist });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar tu playlist' });
+  }
+});
+
+app.delete('/my-playlists/:playlistId', async (req, res) => {
+  try {
+    const { playlistId } = req.params;
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'Falta userId' });
+    }
+
+    const playlist = await Playlist.findById(playlistId);
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist no encontrada' });
+    }
+
+    const user = await User.findById(userId).select('_id role');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const canDelete = String(playlist.creator) === String(userId) || user.role === 'admin';
+    if (!canDelete) {
+      return res.status(403).json({ error: 'No tienes permisos para eliminar esta playlist' });
+    }
+
+    await Playlist.findByIdAndDelete(playlistId);
+    return res.json({ message: 'Playlist eliminada' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al eliminar tu playlist' });
+  }
+});
+
+app.post('/my-playlists/:playlistId/songs', async (req, res) => {
+  try {
+    const { playlistId } = req.params;
+    const { userId, songId } = req.body;
+    if (!userId || !songId) {
+      return res.status(400).json({ error: 'Faltan userId o songId' });
+    }
+
+    const playlist = await Playlist.findById(playlistId);
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist no encontrada' });
+    }
+
+    const user = await User.findById(userId).select('_id role');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const canEdit = String(playlist.creator) === String(userId) || user.role === 'admin';
+    if (!canEdit) {
+      return res.status(403).json({ error: 'No tienes permisos para editar esta playlist' });
+    }
+
+    if (!playlist.songs.some((id) => String(id) === String(songId))) {
+      playlist.songs.push(songId);
+      await playlist.save();
+    }
+
+    const populatedPlaylist = await Playlist.findById(playlist._id)
+      .populate('creator', 'username _id')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+
+    return res.json({ message: 'Canción añadida a playlist', playlist: populatedPlaylist });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al añadir canción a playlist' });
+  }
+});
+
+app.delete('/my-playlists/:playlistId/songs/:songId', async (req, res) => {
+  try {
+    const { playlistId, songId } = req.params;
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'Falta userId' });
+    }
+
+    const playlist = await Playlist.findById(playlistId);
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist no encontrada' });
+    }
+
+    const user = await User.findById(userId).select('_id role');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const canEdit = String(playlist.creator) === String(userId) || user.role === 'admin';
+    if (!canEdit) {
+      return res.status(403).json({ error: 'No tienes permisos para editar esta playlist' });
+    }
+
+    playlist.songs = playlist.songs.filter((id) => String(id) !== String(songId));
+    await playlist.save();
+
+    const populatedPlaylist = await Playlist.findById(playlist._id)
+      .populate('creator', 'username _id')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+
+    return res.json({ message: 'Canción eliminada de playlist', playlist: populatedPlaylist });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al quitar canción de playlist' });
+  }
+});
+
 app.post('/admin/playlists', async (req, res) => {
   try {
     const { requesterId, name, description, coverUrl, songIds, isDefault } = req.body;
