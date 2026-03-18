@@ -16,9 +16,40 @@ const ALBUM_GRADIENTS = [
   'from-amber-600 via-orange-500 to-black',
 ];
 
+// Many more gradient variations for album creation form
+const ALL_ALBUM_GRADIENTS = [
+  'from-red-600 via-pink-600 to-black',
+  'from-red-700 via-red-500 to-black',
+  'from-pink-600 via-rose-500 to-black',
+  'from-pink-700 via-pink-500 to-black',
+  'from-rose-600 via-pink-500 to-black',
+  'from-rose-700 via-red-600 to-black',
+  'from-purple-600 via-pink-500 to-black',
+  'from-purple-700 via-purple-500 to-black',
+  'from-blue-600 via-cyan-500 to-black',
+  'from-blue-700 via-blue-500 to-black',
+  'from-cyan-600 via-blue-500 to-black',
+  'from-green-600 via-emerald-500 to-black',
+  'from-green-700 via-green-500 to-black',
+  'from-emerald-600 via-teal-500 to-black',
+  'from-teal-600 via-green-500 to-black',
+  'from-orange-600 via-pink-500 to-black',
+  'from-orange-700 via-orange-500 to-black',
+  'from-indigo-600 via-purple-500 to-black',
+  'from-indigo-700 via-indigo-500 to-black',
+  'from-amber-600 via-orange-500 to-black',
+  'from-amber-700 via-amber-500 to-black',
+  'from-fuchsia-600 via-pink-500 to-black',
+  'from-fuchsia-700 via-purple-600 to-black',
+];
+
 const getAlbumGradient = (albumId) => {
   const index = albumId.charCodeAt(0) % ALBUM_GRADIENTS.length;
   return ALBUM_GRADIENTS[index];
+};
+
+const getRandomAlbumGradient = () => {
+  return ALL_ALBUM_GRADIENTS[Math.floor(Math.random() * ALL_ALBUM_GRADIENTS.length)];
 };
 
 const AUTH_USER_STORAGE_KEY = 'rtnmusic.auth.user';
@@ -50,6 +81,7 @@ function App() {
   const [searchResults, setSearchResults] = useState({ artists: [], songs: [], albums: [] });
   const [mySongs, setMySongs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false);
 
   const [allSongs, setAllSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
@@ -1018,7 +1050,12 @@ function App() {
           </div>
 
           <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
-            <p className="text-xs font-black text-gray-500 uppercase mb-6 tracking-widest">Álbumes del Artista</p>
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Álbumes del Artista</p>
+              {String(user._id) === String(artistProfile.artist._id) && (user.role === 'artist' || user.role === 'admin') && (
+                <button onClick={() => setIsAlbumModalOpen(true)} className="text-yellow-400 text-xs font-bold hover:underline flex items-center gap-2"><Plus size={14} /> Nuevo Album</button>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {artistProfile.albums?.length > 0 ? (
                 artistProfile.albums.map((album) => (
@@ -1341,6 +1378,14 @@ function App() {
         }}
       />
 
+      <AlbumCreateModal
+        isOpen={isAlbumModalOpen}
+        onClose={() => setIsAlbumModalOpen(false)}
+        user={user}
+        allSongs={allSongs}
+        fetchAlbums={fetchAlbums}
+      />
+
       <SongDetailPanel
         song={selectedSong}
         onClose={() => setSelectedSong(null)}
@@ -1637,6 +1682,166 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist }) =>
           )) : <p className="text-white/60">Este álbum no tiene canciones.</p>}
         </div>
       </div>
+    </div>
+  );
+};
+
+const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [coverUrl, setCoverUrl] = useState('');
+  const [selectedSongs, setSelectedSongs] = useState([]);
+  const [previewGradient, setPreviewGradient] = useState(getRandomAlbumGradient());
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setPreviewGradient(getRandomAlbumGradient());
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleAddSong = (songId) => {
+    if (selectedSongs.includes(songId)) {
+      setSelectedSongs((prev) => prev.filter((id) => id !== songId));
+    } else {
+      setSelectedSongs((prev) => [...prev, songId]);
+    }
+  };
+
+  const handleCreateAlbum = async (e) => {
+    e.preventDefault();
+    if (!title.trim()) return alert('El título del álbum es obligatorio');
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/albums`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user._id,
+          title: title.trim(),
+          description: description.trim(),
+          coverUrl: coverUrl.trim(),
+          songIds: selectedSongs,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        alert('Álbum creado!');
+        setTitle('');
+        setDescription('');
+        setCoverUrl('');
+        setSelectedSongs([]);
+        setPreviewGradient(getRandomAlbumGradient());
+        onClose();
+        fetchAlbums();
+      } else {
+        alert(data.error || 'Error al crear el álbum');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error al conectar con el servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const userSongs = allSongs.filter((song) => String(song.artist?._id) === String(user._id));
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-start md:items-center justify-center p-4 overflow-y-auto">
+      <form onSubmit={handleCreateAlbum} className="bg-[#121212] border border-white/10 w-full max-w-2xl rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
+        <h2 className="text-2xl md:text-3xl font-black italic mb-6 md:mb-8 uppercase tracking-tighter text-white">
+          CREAR <span className="text-yellow-400">NUEVO ÁLBUM</span>
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          {/* Preview */}
+          <div className={`rounded-3xl overflow-hidden aspect-square bg-gradient-to-br ${previewGradient} flex items-center justify-center shadow-lg`}>
+            {coverUrl ? (
+              <img src={coverUrl} alt="Preview" className="w-full h-full object-cover" />
+            ) : (
+              <Disc size={64} className="text-white/40" />
+            )}
+          </div>
+
+          {/* Form */}
+          <div className="space-y-4">
+            <input
+              type="text"
+              placeholder="TÍTULO DEL ÁLBUM"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
+            />
+            <textarea
+              placeholder="DESCRIPCIÓN (OPCIONAL)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20"
+            />
+            <input
+              type="url"
+              placeholder="URL PORTADA (OPCIONAL)"
+              value={coverUrl}
+              onChange={(e) => setCoverUrl(e.target.value)}
+              className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
+            />
+            <button
+              type="button"
+              onClick={() => setPreviewGradient(getRandomAlbumGradient())}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-2xl uppercase tracking-widest text-[10px] transition-all"
+            >
+              Cambiar Color
+            </button>
+          </div>
+        </div>
+
+        {/* Songs Selection */}
+        <div className="bg-black/20 rounded-3xl p-4 mb-6 border border-white/5 max-h-48 overflow-y-auto">
+          <p className="text-xs font-black text-gray-400 uppercase mb-4 tracking-widest">Seleccionar Canciones ({selectedSongs.length})</p>
+          {userSongs.length > 0 ? (
+            <div className="space-y-2">
+              {userSongs.map((song) => (
+                <label key={song._id} className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl cursor-pointer transition-all">
+                  <input
+                    type="checkbox"
+                    checked={selectedSongs.includes(song._id)}
+                    onChange={() => handleAddSong(song._id)}
+                    className="accent-yellow-400 cursor-pointer"
+                  />
+                  <span className="text-sm text-white flex-1 truncate">{song.title}</span>
+                  <span className="text-xs text-gray-400">{Math.floor(song.duration / 60)}:{String(song.duration % 60).padStart(2, '0')}</span>
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No tienes canciones subidas aún</p>
+          )}
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 text-gray-500 font-black uppercase text-[10px] tracking-widest hover:text-white transition-all"
+          >
+            CANCELAR
+          </button>
+          <button
+            disabled={loading}
+            className="flex-1 bg-yellow-400 text-black font-black py-4 rounded-2xl uppercase tracking-widest text-[10px] shadow-lg shadow-yellow-400/20 disabled:opacity-50 hover:bg-yellow-300 transition-all"
+          >
+            {loading ? 'CREANDO...' : 'CREAR ÁLBUM'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };
