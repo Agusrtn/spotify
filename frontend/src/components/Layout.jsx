@@ -43,13 +43,8 @@ const Layout = ({
       {/* SIDEBAR - Cristal Oscuro, oculto en móvil */}
       <aside className="hidden md:flex w-64 bg-black/60 backdrop-blur-2xl border-r border-white/5 flex-col z-20">
         <div className="p-8">
-          <div className="flex items-center gap-2 mb-10">
-            <div className="bg-yellow-400 p-1.5 rounded-lg">
-              <Disc className="text-black animate-spin-slow" size={24} />
-            </div>
-            <h1 className="text-xl font-black tracking-tighter uppercase italic">
-              RTN <span className="text-yellow-400">MUSIC</span>
-            </h1>
+          <div className="mb-10">
+            <img src="/logo.png" alt="RTN MUSIC" className="h-16 object-contain" />
           </div>
           
           <nav className="flex flex-col gap-y-6">
