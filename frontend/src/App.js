@@ -965,12 +965,47 @@ function App() {
               <p className="text-yellow-400 font-bold uppercase tracking-[0.3em] text-xs">{user.role}</p>
             </div>
           </div>
-          <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
-            <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia de Artista</p>
-            <p className="text-xl text-gray-300 italic">"{user.bio || 'Nueva leyenda de RTN MUSIC'}"</p>
-          </div>
 
+          {/* Tabs */}
           {(user.role === 'artist' || user.role === 'admin') && (
+            <div className="flex gap-1 border-b border-white/10 mt-8 overflow-x-auto">
+              <button
+                onClick={() => setActiveArtistTab('info')}
+                className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeArtistTab === 'info' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                Info
+              </button>
+              <button
+                onClick={() => setActiveArtistTab('canciones')}
+                className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeArtistTab === 'canciones' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                Canciones
+              </button>
+              <button
+                onClick={() => setActiveArtistTab('albumes')}
+                className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeArtistTab === 'albumes' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                Álbumes
+              </button>
+              <button
+                onClick={() => setIsAlbumModalOpen(true)}
+                className="ml-auto px-4 md:px-6 py-3 text-yellow-400 text-xl font-black hover:bg-yellow-400/10 rounded-xl transition-all"
+                title="Crear nuevo álbum"
+              >
+                +
+              </button>
+            </div>
+          )}
+
+          {/* Tab Content */}
+          {(activeArtistTab === 'info' || user.role === 'user') && (
+            <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+              <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia de Artista</p>
+              <p className="text-xl text-gray-300 italic">"{user.bio || 'Nueva leyenda de RTN MUSIC'}"</p>
+            </div>
+          )}
+
+          {activeArtistTab === 'canciones' && (user.role === 'artist' || user.role === 'admin') && (
             <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
               <div className="flex justify-between items-center mb-6">
                 <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Mis Canciones</p>
@@ -998,6 +1033,37 @@ function App() {
                   })
                 ) : (
                   <p className="text-gray-500 text-sm">Aun no has subido canciones. Sube tu primer hit.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeArtistTab === 'albumes' && (user.role === 'artist' || user.role === 'admin') && (
+            <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+              <p className="text-xs font-black text-gray-500 uppercase mb-6 tracking-widest">Mis Álbumes</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {albums.filter((a) => String(a.artist?._id) === String(user._id)).length > 0 ? (
+                  albums.filter((a) => String(a.artist?._id) === String(user._id)).map((album) => (
+                    <button
+                      key={album._id}
+                      onClick={() => setSelectedAlbum(album)}
+                      className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                    >
+                      <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center">
+                        {album.coverUrl ? (
+                          <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <Disc size={48} className="text-white/40" />
+                        )}
+                      </div>
+                      <div className="p-4 bg-black/40 backdrop-blur-sm">
+                        <p className="font-black text-lg leading-tight mb-1 text-white">{album.title}</p>
+                        <p className="text-white/50 text-xs">{album.songs?.length || 0} canciones</p>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-sm col-span-full">No tienes álbumes aún. Pulsa el <span className="text-yellow-400 font-bold">+</span> para crear uno.</p>
                 )}
               </div>
             </div>
