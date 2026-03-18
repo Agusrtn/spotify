@@ -57,15 +57,15 @@ const Login = ({ onLogin }) => {
         onSubmit={handleAuth} 
         className="bg-white/5 p-12 rounded-[48px] border border-white/10 w-full max-w-md backdrop-blur-2xl shadow-2xl z-10 animate-in zoom-in-95 duration-500"
       >
-        <div className="text-center mb-10">
-          <div className="bg-yellow-400 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 rotate-3 shadow-lg shadow-yellow-400/20">
-            <span className="text-black text-3xl font-black">RTN</span>
+        <div className="text-center mb-12">
+          <div className="mb-8 flex justify-center">
+            <img src="/logo.png" alt="RTN MUSIC" className="h-24 object-contain" />
           </div>
-          <h1 className="text-3xl font-black italic tracking-tighter uppercase">
-            {isRegistering ? 'Join the' : 'Join the'} <span className="text-yellow-400">CREW</span>
+          <h1 className="text-4xl font-black italic tracking-tighter uppercase">
+            JOIN THE <span className="text-yellow-400">CREW</span>
           </h1>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">
-            {isRegistering ? (isAdminRegister ? 'Crear cuenta de administrador' : 'Registro de usuario') : 'Vibe Check 2026'}
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-3">
+            {isRegistering ? (isAdminRegister ? 'Crear cuenta de Administrador' : 'Registro de Usuario') : 'Vibe Check 2026'}
           </p>
         </div>
 
