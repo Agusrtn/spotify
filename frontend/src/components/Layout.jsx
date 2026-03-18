@@ -1,5 +1,6 @@
 import React from 'react';
 import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload } from 'lucide-react';
+import Aurora from './Aurora';
 
 const Layout = ({ 
   children, 
@@ -107,7 +108,19 @@ const Layout = ({
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 relative overflow-y-auto bg-gradient-to-tr from-black via-[#0d0d0d] to-[#151515]">
+      <main className="flex-1 relative overflow-y-auto bg-[#080808]">
+        {/* Aurora background */}
+        <div className="fixed top-0 bottom-0 right-0 left-0 md:left-64 pointer-events-none z-0">
+          <Aurora
+            colorStops={['#ffd666', '#fa9200', '#895206']}
+            amplitude={1}
+            blend={0.6}
+            speed={0.5}
+          />
+          {/* Dark overlay so content stays readable */}
+          <div className="absolute inset-0 bg-black/70" />
+        </div>
+
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-yellow-400/5 blur-[120px] rounded-full -z-10"></div>
         
         <header className="sticky top-0 z-10 flex items-center justify-between px-4 md:px-10 py-4 md:py-6 bg-black/10 backdrop-blur-md border-b border-white/5">
