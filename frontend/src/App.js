@@ -108,6 +108,9 @@ function App() {
   const [adminTopSongs, setAdminTopSongs] = useState([]);
   const [adminTopLoading, setAdminTopLoading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '' });
 
   const [settingsBio, setSettingsBio] = useState('');
   const [settingsPic, setSettingsPic] = useState(null);
@@ -127,9 +130,40 @@ function App() {
   const activeSongIdRef = useRef(null);
   const lastTrackedPositionRef = useRef(0);
   const pendingListenSecondsRef = useRef(0);
+  const songsInitializedRef = useRef(false);
+  const albumsInitializedRef = useRef(false);
+  const deepLinkHandledRef = useRef(false);
+  const confirmResolverRef = useRef(null);
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
+  };
+
+  const addNotification = (title, message, action = null) => {
+    const notification = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title,
+      message,
+      action,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    setNotifications((prev) => [notification, ...prev].slice(0, 40));
+  };
+
+  const askConfirm = (message, title = 'Confirmar') => {
+    return new Promise((resolve) => {
+      confirmResolverRef.current = resolve;
+      setConfirmDialog({ open: true, title, message });
+    });
+  };
+
+  const resolveConfirm = (accepted) => {
+    if (confirmResolverRef.current) {
+      confirmResolverRef.current(Boolean(accepted));
+      confirmResolverRef.current = null;
+    }
+    setConfirmDialog({ open: false, title: '', message: '' });
   };
 
   const fetchAllSongs = async () => {
@@ -137,7 +171,22 @@ function App() {
       const res = await fetch(`${API_URL}/all-songs`);
       if (res.ok) {
         const data = await res.json();
-        setAllSongs(data);
+        setAllSongs((prev) => {
+          if (songsInitializedRef.current) {
+            const prevIds = new Set(prev.map((song) => String(song._id)));
+            const freshSongs = data.filter((song) => !prevIds.has(String(song._id)));
+            freshSongs.slice(0, 3).forEach((song) => {
+              addNotification(
+                'Nueva canción publicada',
+                `${song.title} - ${song.artist?.username || 'Artista'}`,
+                { type: 'song', id: song._id }
+              );
+            });
+          } else {
+            songsInitializedRef.current = true;
+          }
+          return data;
+        });
       }
     } catch (err) {
       console.error('Error fetching all songs:', err);
@@ -161,7 +210,22 @@ function App() {
       const res = await fetch(`${API_URL}/albums`);
       if (res.ok) {
         const data = await res.json();
-        setAlbums(data);
+        setAlbums((prev) => {
+          if (albumsInitializedRef.current) {
+            const prevIds = new Set(prev.map((album) => String(album._id)));
+            const freshAlbums = data.filter((album) => !prevIds.has(String(album._id)));
+            freshAlbums.slice(0, 3).forEach((album) => {
+              addNotification(
+                'Nuevo álbum publicado',
+                `${album.title} - ${album.artist?.username || 'Artista'}`,
+                { type: 'album', id: album._id }
+              );
+            });
+          } else {
+            albumsInitializedRef.current = true;
+          }
+          return data;
+        });
       }
     } catch (err) {
       console.error('Error fetching albums:', err);
@@ -250,8 +314,13 @@ function App() {
   const shareLink = async (type, itemId, label) => {
     try {
       const url = `${window.location.origin}?${type}=${itemId}`;
-      await navigator.clipboard.writeText(url);
-      showToast(`Enlace de ${label} copiado`, 'success');
+      if (navigator.share) {
+        await navigator.share({ title: `RTN Music - ${label}`, text: `Te comparto ${label}`, url });
+        showToast(`Compartiste ${label}`, 'success');
+      } else {
+        await navigator.clipboard.writeText(url);
+        showToast(`Enlace de ${label} copiado`, 'success');
+      }
     } catch (err) {
       console.error(err);
       showToast('No se pudo copiar el enlace', 'error');
@@ -262,6 +331,7 @@ function App() {
     fetchAllSongs();
     fetchPlaylists();
     fetchAlbums();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -269,6 +339,51 @@ function App() {
     const timeoutId = setTimeout(() => setToast(null), 2200);
     return () => clearTimeout(timeoutId);
   }, [toast]);
+
+  useEffect(() => {
+    if (isNotificationsOpen) {
+      setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+    }
+  }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (deepLinkHandledRef.current) return;
+    if (!allSongs.length && !albums.length) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const songId = params.get('song');
+    const albumId = params.get('album');
+    const artistId = params.get('artist');
+
+    if (songId) {
+      const song = allSongs.find((item) => String(item._id) === String(songId));
+      if (song) {
+        setSelectedSong(song);
+        setView('inicio');
+        showToast('Abriendo canción compartida', 'success');
+      }
+    }
+
+    if (albumId) {
+      const album = albums.find((item) => String(item._id) === String(albumId));
+      if (album) {
+        setSelectedAlbum(album);
+        setView('inicio');
+        showToast('Abriendo álbum compartido', 'success');
+      }
+    }
+
+    if (artistId && !songId && !albumId) {
+      openArtistProfile(artistId);
+      showToast('Abriendo artista compartido', 'success');
+    }
+
+    if (songId || albumId || artistId) {
+      deepLinkHandledRef.current = true;
+      const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+  }, [allSongs, albums]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -301,6 +416,7 @@ function App() {
     }, 8000);
 
     return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
@@ -620,7 +736,7 @@ function App() {
   };
 
   const deletePlaylist = async (playlistId) => {
-    const confirmed = window.confirm('¿Eliminar esta playlist?');
+    const confirmed = await askConfirm('¿Eliminar esta playlist?', 'Eliminar playlist');
     if (!confirmed) return;
 
     try {
@@ -726,7 +842,7 @@ function App() {
 
   // eslint-disable-next-line no-unused-vars
   const deleteAlbum = async (albumId) => {
-    const confirmed = window.confirm('¿Eliminar este álbum?');
+    const confirmed = await askConfirm('¿Eliminar este álbum?', 'Eliminar álbum');
     if (!confirmed) return;
 
     try {
@@ -863,7 +979,7 @@ function App() {
   };
 
   const deleteMemberAccount = async (memberId) => {
-    const confirmed = window.confirm('¿Seguro que quieres eliminar esta cuenta y sus canciones?');
+    const confirmed = await askConfirm('¿Seguro que quieres eliminar esta cuenta y sus canciones?', 'Eliminar cuenta');
     if (!confirmed) return;
 
     setMemberActionLoading((prev) => ({ ...prev, [memberId]: true }));
@@ -925,7 +1041,7 @@ function App() {
   };
 
   const handleDeleteSong = async (songId) => {
-    const confirmed = window.confirm('¿Seguro que quieres eliminar esta canción?');
+    const confirmed = await askConfirm('¿Seguro que quieres eliminar esta canción?', 'Eliminar canción');
     if (!confirmed) return;
 
     try {
@@ -961,6 +1077,30 @@ function App() {
     }
   };
 
+  const unreadNotifications = notifications.filter((item) => !item.read).length;
+
+  const handleNotificationClick = (notification) => {
+    if (!notification?.action?.id) return;
+
+    if (notification.action.type === 'song') {
+      const song = allSongs.find((item) => String(item._id) === String(notification.action.id));
+      if (song) {
+        setSelectedSong(song);
+        setView('inicio');
+      }
+    }
+
+    if (notification.action.type === 'album') {
+      const album = albums.find((item) => String(item._id) === String(notification.action.id));
+      if (album) {
+        setSelectedAlbum(album);
+        setView('inicio');
+      }
+    }
+
+    setIsNotificationsOpen(false);
+  };
+
   if (!user) {
     return (
       <Login
@@ -992,6 +1132,8 @@ function App() {
       onDurationChange={(dur) => setDuration(dur)}
       onSongEnd={handleSongEnd}
       onOpenArtist={openArtistProfile}
+      unreadNotifications={unreadNotifications}
+      onToggleNotifications={() => setIsNotificationsOpen((prev) => !prev)}
     >
       {view === 'inicio' && (
         <div className="animate-in fade-in duration-700">
@@ -1757,6 +1899,58 @@ function App() {
         </div>
       )}
 
+      {isNotificationsOpen && (
+        <div className="fixed top-20 right-4 z-[190] w-[360px] max-w-[calc(100vw-2rem)] bg-black/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+            <p className="text-xs uppercase tracking-widest text-gray-400 font-black">Notificaciones</p>
+            <button
+              onClick={() => setNotifications([])}
+              className="text-[10px] text-yellow-400 font-bold uppercase"
+            >
+              Limpiar
+            </button>
+          </div>
+          <div className="max-h-[360px] overflow-y-auto">
+            {notifications.length ? notifications.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleNotificationClick(item)}
+                className={`w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 ${item.read ? 'opacity-70' : ''}`}
+              >
+                <p className="text-sm font-bold text-white">{item.title}</p>
+                <p className="text-xs text-gray-400 mt-1">{item.message}</p>
+              </button>
+            )) : (
+              <p className="px-4 py-8 text-sm text-gray-500">No tienes notificaciones.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {confirmDialog.open && (
+        <div className="fixed inset-0 z-[210] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#111] border border-white/10 rounded-2xl p-6">
+            <h3 className="text-xl font-black mb-3">{confirmDialog.title}</h3>
+            <p className="text-gray-300 text-sm mb-6">{confirmDialog.message}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => resolveConfirm(false)}
+                className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => resolveConfirm(true)}
+                className="flex-1 py-3 rounded-xl bg-red-600/90 hover:bg-red-600 text-sm font-bold uppercase"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className="fixed bottom-28 right-4 z-[200]">
           <div className={`px-4 py-3 rounded-2xl border shadow-2xl text-sm font-bold ${toast.type === 'error' ? 'bg-red-900/90 border-red-500 text-red-100' : 'bg-black/90 border-yellow-400/40 text-yellow-200'}`}>
@@ -1891,7 +2085,8 @@ function App() {
           setIsAlbumModalOpen(true);
         }}
         onDelete={async (albumId) => {
-          if (!window.confirm('¿Eliminar este álbum?')) return;
+          const confirmed = await askConfirm('¿Eliminar este álbum?', 'Eliminar álbum');
+          if (!confirmed) return;
           try {
             const res = await fetch(`${API_URL}/albums/${albumId}`, {
               method: 'DELETE',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload } from 'lucide-react';
+import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell } from 'lucide-react';
 import Aurora from './Aurora';
 
 const Layout = ({ 
@@ -21,7 +21,9 @@ const Layout = ({
   onTimeUpdate,
   onDurationChange,
   onSongEnd,
-  onOpenArtist
+  onOpenArtist,
+  unreadNotifications,
+  onToggleNotifications
 }) => {
 
   const formatTime = (time) => {
@@ -125,6 +127,18 @@ const Layout = ({
           <div className="text-gray-500 font-black tracking-[0.3em] text-[10px] uppercase">RTN Engine / 2.0.26</div>
           
           <div className="flex items-center gap-4">
+            <button
+              onClick={onToggleNotifications}
+              className="relative flex items-center justify-center w-10 h-10 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
+              aria-label="Notificaciones"
+            >
+              <Bell size={18} className="text-yellow-300" />
+              {unreadNotifications > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-yellow-400 text-black text-[10px] font-black rounded-full flex items-center justify-center">
+                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                </span>
+              )}
+            </button>
             <div className="text-right hidden md:block">
               <p className="text-xs font-black text-white leading-none">{user.username}</p>
               <p className="text-[9px] text-yellow-400 font-bold uppercase tracking-tighter mt-1">{user.role}</p>
