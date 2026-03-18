@@ -44,7 +44,7 @@ const Layout = ({
       <aside className="hidden md:flex w-64 bg-black/60 backdrop-blur-2xl border-r border-white/5 flex-col z-20">
         <div className="p-8">
           <div className="mb-10">
-            <img src="/logo.png" alt="RTN MUSIC" className="h-16 object-contain" />
+            <img src="/logo.png" alt="RTN MUSIC" className="h-32 object-contain" />
           </div>
           
           <nav className="flex flex-col gap-y-6">

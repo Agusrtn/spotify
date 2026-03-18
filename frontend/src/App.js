@@ -1071,9 +1071,21 @@ function App() {
               />
             </div>
 
-            <button disabled={settingsLoading} className="bg-yellow-400 text-black font-black py-3 px-8 rounded-2xl uppercase tracking-widest text-xs disabled:opacity-60">
-              {settingsLoading ? 'Guardando...' : 'Guardar Ajustes'}
-            </button>
+            <div className="flex gap-3">
+              <button disabled={settingsLoading} className="flex-1 bg-yellow-400 text-black font-black py-3 px-8 rounded-2xl uppercase tracking-widest text-xs disabled:opacity-60">
+                {settingsLoading ? 'Guardando...' : 'Guardar Ajustes'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUser(null);
+                  setAuthToken('');
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white font-black py-3 px-8 rounded-2xl uppercase tracking-widest text-xs transition-all"
+              >
+                Cerrar Sesión
+              </button>
+            </div>
           </form>
         </div>
       )}
