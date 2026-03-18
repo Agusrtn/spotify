@@ -90,7 +90,10 @@ function App() {
   const [albums, setAlbums] = useState([]);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [, setCurrentIndex] = useState(0);
+  const [playQueue, setPlayQueue] = useState([]);
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [playMode, setPlayMode] = useState('all');
   const [volume, setVolume] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -239,23 +242,71 @@ function App() {
   };
 
   const handleSongEnd = () => {
-    if (currentIndex < allSongs.length - 1) playSong(allSongs[currentIndex + 1], currentIndex + 1);
-    else setIsPlaying(false);
+    if (!playQueue.length || !allSongs.length) {
+      setIsPlaying(false);
+      return;
+    }
+
+    if (playMode === 'random') {
+      const randomIndex = Math.floor(Math.random() * allSongs.length);
+      playSong(allSongs[randomIndex], randomIndex, { queue: allSongs, mode: 'random' });
+      return;
+    }
+
+    if (queueIndex < playQueue.length - 1) {
+      const nextIndex = queueIndex + 1;
+      playSong(playQueue[nextIndex], nextIndex, { queue: playQueue, mode: playMode });
+      return;
+    }
+
+    if (playMode === 'album') {
+      const randomIndex = Math.floor(Math.random() * allSongs.length);
+      playSong(allSongs[randomIndex], randomIndex, { queue: allSongs, mode: 'random' });
+      return;
+    }
+
+    setIsPlaying(false);
   };
 
-  const playSong = (song, index) => {
+  const playSong = (song, index, options = {}) => {
+    const queue = options.queue || allSongs;
+    const mode = options.mode || 'all';
     setCurrentSong(song);
     setCurrentIndex(index);
+    setPlayQueue(queue);
+    setQueueIndex(index);
+    setPlayMode(mode);
     setIsPlaying(true);
     setCurrentTime(0);
   };
 
   const togglePlay = () => setIsPlaying(!isPlaying);
   const nextSong = () => {
-    if (currentIndex < allSongs.length - 1) playSong(allSongs[currentIndex + 1], currentIndex + 1);
+    if (!playQueue.length || !allSongs.length) return;
+
+    if (playMode === 'random') {
+      const randomIndex = Math.floor(Math.random() * allSongs.length);
+      playSong(allSongs[randomIndex], randomIndex, { queue: allSongs, mode: 'random' });
+      return;
+    }
+
+    if (queueIndex < playQueue.length - 1) {
+      const nextIndex = queueIndex + 1;
+      playSong(playQueue[nextIndex], nextIndex, { queue: playQueue, mode: playMode });
+      return;
+    }
+
+    if (playMode === 'album') {
+      const randomIndex = Math.floor(Math.random() * allSongs.length);
+      playSong(allSongs[randomIndex], randomIndex, { queue: allSongs, mode: 'random' });
+    }
   };
   const prevSong = () => {
-    if (currentIndex > 0) playSong(allSongs[currentIndex - 1], currentIndex - 1);
+    if (!playQueue.length || playMode === 'random') return;
+    if (queueIndex > 0) {
+      const prevIndex = queueIndex - 1;
+      playSong(playQueue[prevIndex], prevIndex, { queue: playQueue, mode: playMode });
+    }
   };
 
   const openSongDetail = (song) => setSelectedSong(song);
@@ -1532,10 +1583,14 @@ function App() {
         album={selectedAlbum}
         onClose={() => setSelectedAlbum(null)}
         user={user}
-        onPlaySong={(song) => {
-          const idx = allSongs.findIndex((item) => item._id === song._id);
-          const playableSong = idx >= 0 ? allSongs[idx] : song;
-          playSong(playableSong, idx >= 0 ? idx : 0);
+        onPlaySong={(song, albumIndex, albumSongs) => {
+          const normalizedAlbumSongs = (albumSongs || []).map((albumSong) => {
+            const idx = allSongs.findIndex((item) => item._id === albumSong._id);
+            return idx >= 0 ? allSongs[idx] : albumSong;
+          });
+          const safeIndex = albumIndex >= 0 ? albumIndex : 0;
+          const playableSong = normalizedAlbumSongs[safeIndex] || song;
+          playSong(playableSong, safeIndex, { queue: normalizedAlbumSongs, mode: 'album' });
         }}
         onOpenArtist={openArtistProfile}
         onEdit={(album) => {
@@ -1832,9 +1887,12 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onEd
                   {song.artist?.username || 'Artista'}
                 </button>
               </div>
-              <button onClick={() => onPlaySong(song)} className="p-2 md:px-3 md:py-2 rounded-xl bg-white/10 hover:bg-white/20 flex-shrink-0 flex items-center justify-center">
-                <Play size={16} fill="white" className="md:hidden" />
-                <span className="hidden md:inline text-xs font-bold uppercase text-white">Reproducir</span>
+              <button
+                onClick={() => onPlaySong(song, index, album.songs || [])}
+                className="w-12 h-12 rounded-xl bg-white/15 hover:bg-white/25 border border-white/15 flex-shrink-0 flex items-center justify-center transition-all"
+                aria-label="Reproducir canción"
+              >
+                <Play size={18} fill="white" className="text-white ml-[2px]" />
               </button>
             </div>
           )) : <p className="text-white/60">Este álbum no tiene canciones.</p>}
