@@ -36,7 +36,7 @@ const Login = ({ onLogin }) => {
           setIsAdminRegister(false);
           setAdminCode('');
         } else {
-          onLogin(data.user); // Iniciamos sesión
+          onLogin(data.user, data.token); // Iniciamos sesión y persistimos token
         }
       } else {
         alert(`❌ Error: ${data.error}`);

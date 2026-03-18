@@ -40,8 +40,8 @@ const Layout = ({
   return (
     <div className="flex h-screen bg-[#080808] text-white font-sans overflow-hidden">
       
-      {/* SIDEBAR - Cristal Oscuro */}
-      <aside className="w-64 bg-black/60 backdrop-blur-2xl border-r border-white/5 flex flex-col z-20">
+      {/* SIDEBAR - Cristal Oscuro, oculto en móvil */}
+      <aside className="hidden md:flex w-64 bg-black/60 backdrop-blur-2xl border-r border-white/5 flex-col z-20">
         <div className="p-8">
           <div className="flex items-center gap-2 mb-10">
             <div className="bg-yellow-400 p-1.5 rounded-lg">
@@ -115,7 +115,7 @@ const Layout = ({
       <main className="flex-1 relative overflow-y-auto bg-gradient-to-tr from-black via-[#0d0d0d] to-[#151515]">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-yellow-400/5 blur-[120px] rounded-full -z-10"></div>
         
-        <header className="sticky top-0 z-10 flex items-center justify-between px-10 py-6 bg-black/10 backdrop-blur-md border-b border-white/5">
+        <header className="sticky top-0 z-10 flex items-center justify-between px-4 md:px-10 py-4 md:py-6 bg-black/10 backdrop-blur-md border-b border-white/5">
           <div className="text-gray-500 font-black tracking-[0.3em] text-[10px] uppercase">RTN Engine / 2.0.26</div>
           
           <div className="flex items-center gap-4">
@@ -138,13 +138,13 @@ const Layout = ({
           </div>
         </header>
 
-        <div className="px-10 py-8 pb-40">
+        <div className="px-4 md:px-10 py-6 md:py-8 pb-36 md:pb-40">
           {children}
         </div>
       </main>
 
-      {/* PLAYER MODERNO */}
-      <footer className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl h-24 bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[35px] px-10 flex items-center justify-between shadow-2xl z-50">
+      {/* PLAYER MODERNO - solo escritorio */}
+      <footer className="hidden md:flex fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl h-24 bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[35px] px-10 items-center justify-between shadow-2xl z-50">
         <audio 
           ref={audioRef}
           src={currentSong?.audioUrl}
@@ -226,6 +226,78 @@ const Layout = ({
           </div>
         </div>
       </footer>
+
+      {/* MINI PLAYER MÓVIL */}
+      <div className="md:hidden fixed bottom-16 left-0 right-0 z-40 bg-black/95 backdrop-blur-xl border-t border-white/10">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <div className="w-10 h-10 bg-yellow-400 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
+            {currentSong?.coverUrl ? (
+              <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
+            ) : (
+              <Mic2 className="text-black" size={18} />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black truncate">{currentSong?.title || 'RTN MUSIC'}</p>
+            <p className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">{currentSong?.artist?.username || 'System Radio'}</p>
+          </div>
+          <button onClick={prevSong} className="text-gray-500 p-1 active:text-white">
+            <SkipBack size={18} />
+          </button>
+          <button
+            onClick={togglePlay}
+            className="w-9 h-9 bg-white text-black rounded-full flex items-center justify-center active:scale-95 flex-shrink-0"
+          >
+            {isPlaying ? <Pause fill="black" size={16} /> : <Play fill="black" size={16} className="ml-0.5" />}
+          </button>
+          <button onClick={nextSong} className="text-gray-500 p-1 active:text-white">
+            <SkipForward size={18} />
+          </button>
+        </div>
+        <div
+          className="h-[2px] bg-white/10 cursor-pointer mx-4"
+          onClick={handleSeek}
+        >
+          <div
+            className="h-full bg-yellow-400"
+            style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+          />
+        </div>
+      </div>
+
+      {/* NAV INFERIOR MÓVIL */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-16 bg-black/95 backdrop-blur-xl border-t border-white/5 flex items-center">
+        <div className="flex justify-around w-full px-2">
+          <button onClick={() => setView('inicio')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+            <Home size={22} className={view === 'inicio' ? 'text-yellow-400' : 'text-gray-500'} />
+            <span className={`text-[9px] font-bold ${view === 'inicio' ? 'text-yellow-400' : 'text-gray-500'}`}>Inicio</span>
+          </button>
+          <button onClick={() => setView('buscar')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+            <Search size={22} className={view === 'buscar' ? 'text-yellow-400' : 'text-gray-500'} />
+            <span className={`text-[9px] font-bold ${view === 'buscar' ? 'text-yellow-400' : 'text-gray-500'}`}>Explorar</span>
+          </button>
+          <button onClick={() => setView('perfil')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+            <Library size={22} className={view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'} />
+            <span className={`text-[9px] font-bold ${view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'}`}>Mi Crew</span>
+          </button>
+          {user.role === 'admin' && (
+            <button onClick={() => setView('admin')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+              <ShieldAlert size={22} className={view === 'admin' ? 'text-red-400' : 'text-gray-500'} />
+              <span className={`text-[9px] font-bold ${view === 'admin' ? 'text-red-400' : 'text-gray-500'}`}>Admin</span>
+            </button>
+          )}
+          <button onClick={() => setView('ajustes')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+            <div className={`w-6 h-6 rounded-full overflow-hidden bg-yellow-400 flex items-center justify-center flex-shrink-0 ${view === 'ajustes' ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-black' : ''}`}>
+              {user.profilePic ? (
+                <img src={user.profilePic} alt={user.username} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[10px] font-black text-black">{user.username.charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+            <span className={`text-[9px] font-bold ${view === 'ajustes' ? 'text-yellow-400' : 'text-gray-500'}`}>Perfil</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 };

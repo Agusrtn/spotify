@@ -4,8 +4,30 @@ import Login from './pages/Login';
 import { API_URL } from './config';
 import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check } from 'lucide-react';
 
+const AUTH_USER_STORAGE_KEY = 'rtnmusic.auth.user';
+const AUTH_TOKEN_STORAGE_KEY = 'rtnmusic.auth.token';
+
+const getStoredAuthUser = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawUser = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
+    return rawUser ? JSON.parse(rawUser) : null;
+  } catch (error) {
+    console.error('Error reading stored user session:', error);
+    window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    return null;
+  }
+};
+
+const getStoredAuthToken = () => {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '';
+};
+
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(getStoredAuthUser);
+  const [authToken, setAuthToken] = useState(getStoredAuthToken);
   const [view, setView] = useState('inicio');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState({ artists: [], songs: [] });
@@ -65,6 +87,26 @@ function App() {
     fetchAllSongs();
     fetchPlaylists();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (user) {
+      window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+    } else {
+      window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (authToken) {
+      window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, authToken);
+    } else {
+      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+  }, [authToken]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -510,7 +552,16 @@ function App() {
     }
   };
 
-  if (!user) return <Login onLogin={(userData) => setUser(userData)} />;
+  if (!user) {
+    return (
+      <Login
+        onLogin={(userData, token) => {
+          setUser(userData);
+          setAuthToken(token || '');
+        }}
+      />
+    );
+  }
 
   return (
     <Layout
@@ -535,13 +586,13 @@ function App() {
     >
       {view === 'inicio' && (
         <div className="animate-in fade-in duration-700">
-          <h1 className="text-7xl font-black mb-8 tracking-tighter uppercase italic">
+          <h1 className="text-4xl md:text-7xl font-black mb-4 md:mb-8 tracking-tighter uppercase italic">
             EXPLORA EL <span className="text-yellow-400 font-black">SONIDO</span>
           </h1>
 
           <section className="mb-14">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-3xl font-black tracking-tight">Especialmente para ti</h3>
+              <h3 className="text-xl md:text-3xl font-black tracking-tight">Especialmente para ti</h3>
               <span className="text-sm text-gray-400 font-bold">Mostrar todos</span>
             </div>
 
@@ -605,7 +656,7 @@ function App() {
             type="text"
             value={searchQuery}
             placeholder="Busca artistas o canciones"
-            className="w-full bg-white/5 border border-white/10 p-6 rounded-[30px] text-2xl outline-none focus:border-yellow-400 transition-all mb-10 font-bold"
+            className="w-full bg-white/5 border border-white/10 p-4 md:p-6 rounded-[30px] text-lg md:text-2xl outline-none focus:border-yellow-400 transition-all mb-6 md:mb-10 font-bold"
             onChange={(e) => handleSearch(e.target.value)}
           />
 
@@ -666,22 +717,22 @@ function App() {
 
       {view === 'perfil' && (
         <div className="animate-in fade-in duration-500">
-          <div className="h-48 bg-gradient-to-r from-yellow-400/20 to-black rounded-[40px] border border-white/10 p-10 flex items-end gap-6">
-            <div className="w-24 h-24 bg-yellow-400 rounded-3xl overflow-hidden font-black text-black text-4xl flex items-center justify-center shadow-lg shadow-yellow-400/20">
+          <div className="bg-gradient-to-r from-yellow-400/20 to-black rounded-[40px] border border-white/10 p-6 md:p-10 flex items-center md:items-end gap-4 md:gap-6 min-h-[100px] md:h-48">
+            <div className="w-16 h-16 md:w-24 md:h-24 bg-yellow-400 rounded-3xl overflow-hidden font-black text-black text-3xl md:text-4xl flex items-center justify-center shadow-lg shadow-yellow-400/20 flex-shrink-0">
               {user.profilePic ? <img src={user.profilePic} alt={user.username} className="w-full h-full object-cover" /> : user.username.charAt(0)}
             </div>
-            <div>
-              <h2 className="text-5xl font-black uppercase tracking-tighter">{user.username}</h2>
+            <div className="min-w-0">
+              <h2 className="text-2xl md:text-5xl font-black uppercase tracking-tighter truncate">{user.username}</h2>
               <p className="text-yellow-400 font-bold uppercase tracking-[0.3em] text-xs">{user.role}</p>
             </div>
           </div>
-          <div className="mt-8 bg-white/5 p-8 rounded-[40px] border border-white/5">
+          <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
             <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia de Artista</p>
             <p className="text-xl text-gray-300 italic">"{user.bio || 'Nueva leyenda de RTN MUSIC'}"</p>
           </div>
 
           {(user.role === 'artist' || user.role === 'admin') && (
-            <div className="mt-8 bg-white/5 p-8 rounded-[40px] border border-white/5">
+            <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
               <div className="flex justify-between items-center mb-6">
                 <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Mis Canciones</p>
                 <button onClick={() => fetchMySongs(user._id)} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar</button>
@@ -717,23 +768,23 @@ function App() {
 
       {view === 'artist' && artistProfile && (
         <div className="animate-in fade-in duration-500 space-y-8">
-          <div className="h-56 bg-gradient-to-r from-yellow-400/20 to-black rounded-[40px] border border-white/10 p-8 md:p-10 flex items-end gap-6">
-            <div className="w-28 h-28 rounded-3xl overflow-hidden bg-yellow-400 text-black font-black text-4xl flex items-center justify-center shadow-lg shadow-yellow-400/20">
+          <div className="bg-gradient-to-r from-yellow-400/20 to-black rounded-[40px] border border-white/10 p-6 md:p-10 flex items-center md:items-end gap-4 md:gap-6 min-h-[100px] md:h-56">
+            <div className="w-16 h-16 md:w-28 md:h-28 rounded-3xl overflow-hidden bg-yellow-400 text-black font-black text-3xl md:text-4xl flex items-center justify-center shadow-lg shadow-yellow-400/20 flex-shrink-0">
               {artistProfile.artist.profilePic ? <img src={artistProfile.artist.profilePic} alt={artistProfile.artist.username} className="w-full h-full object-cover" /> : artistProfile.artist.username.charAt(0).toUpperCase()}
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs tracking-[0.3em] text-gray-400 uppercase font-black">Mi Crew</p>
-              <h2 className="text-5xl font-black uppercase tracking-tighter">{artistProfile.artist.username}</h2>
+              <h2 className="text-2xl md:text-5xl font-black uppercase tracking-tighter truncate">{artistProfile.artist.username}</h2>
               <p className="text-yellow-400 font-bold uppercase tracking-[0.2em] text-xs">{artistProfile.artist.role}</p>
             </div>
           </div>
 
-          <div className="bg-white/5 p-8 rounded-[40px] border border-white/5">
+          <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
             <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia</p>
             <p className="text-lg text-gray-300">{artistProfile.artist.bio || 'Este artista no tiene bio aun.'}</p>
           </div>
 
-          <div className="bg-white/5 p-8 rounded-[40px] border border-white/5">
+          <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
             <p className="text-xs font-black text-gray-500 uppercase mb-6 tracking-widest">Canciones del Artista</p>
             <div className="space-y-3">
               {artistProfile.songs?.length > 0 ? (
@@ -765,15 +816,15 @@ function App() {
 
       {view === 'admin' && user.role === 'admin' && (
         <div className="animate-in fade-in duration-500 space-y-8">
-          <h2 className="text-4xl font-black uppercase tracking-tighter">Panel de Administrador</h2>
+          <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter">Panel de Administrador</h2>
 
-          <section className="bg-white/5 p-8 rounded-[40px] border border-white/10">
+          <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
             <div className="flex items-center justify-between mb-6">
               <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Playlists por defecto</p>
               <button onClick={resetPlaylistForm} className="text-yellow-400 text-xs font-bold hover:underline flex items-center gap-2"><Plus size={14} /> Nueva playlist</button>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-8">
+            <div className="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-6 md:gap-8">
               <form onSubmit={savePlaylist} className="space-y-4 bg-black/30 rounded-3xl border border-white/10 p-5">
                 <input
                   value={playlistForm.name}
@@ -862,7 +913,7 @@ function App() {
             </div>
           </section>
 
-          <section className="bg-white/5 p-8 rounded-[40px] border border-white/10">
+          <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
             <div className="flex items-center justify-between mb-6">
               <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Miembros registrados</p>
               <button onClick={fetchMembers} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar</button>
@@ -937,7 +988,7 @@ function App() {
             </div>
           </section>
 
-          <section className="bg-white/5 p-8 rounded-[40px] border border-white/10">
+          <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
             <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-6">Gestión global de canciones</p>
             <div className="space-y-3">
               {allSongs.length > 0 ? (
@@ -989,8 +1040,8 @@ function App() {
 
       {view === 'ajustes' && (
         <div className="animate-in fade-in duration-500">
-          <h2 className="text-4xl font-black uppercase tracking-tighter mb-8">Ajustes de Mi Crew</h2>
-          <form onSubmit={handleSaveProfile} className="bg-white/5 p-8 rounded-[40px] border border-white/10 max-w-3xl space-y-6">
+          <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter mb-6 md:mb-8">Ajustes de Mi Crew</h2>
+          <form onSubmit={handleSaveProfile} className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/10 max-w-3xl space-y-6">
             <div>
               <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Foto de Perfil</p>
               <div className="flex items-center gap-4">
@@ -1144,7 +1195,7 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
 
           <div className="min-w-0 flex-1">
             <p className="text-white/80 text-xl font-bold">Cancion</p>
-            <h2 className="text-5xl md:text-8xl font-black leading-none uppercase tracking-tight break-words">{title || song.title}</h2>
+            <h2 className="text-3xl md:text-5xl lg:text-8xl font-black leading-none uppercase tracking-tight break-words">{title || song.title}</h2>
             <button
               type="button"
               onClick={() => song.artist?._id && onOpenArtist(song.artist._id)}
@@ -1251,21 +1302,22 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
 
         <div className="border-t border-white/10 px-6 md:px-10 py-6 bg-black/20 space-y-3">
           {playlist.songs?.length ? playlist.songs.map((song, index) => (
-            <div key={song._id} className="grid grid-cols-[32px_56px_minmax(0,1fr)_120px_60px] items-center gap-4 py-3 border-b border-white/5">
-              <span className="text-gray-500 font-bold">{index + 1}</span>
-              <div className="w-14 h-14 rounded-lg overflow-hidden bg-black/40">
+            <div key={song._id} className="flex items-center gap-3 py-3 border-b border-white/5">
+              <span className="hidden md:block text-gray-500 font-bold w-7 text-center flex-shrink-0">{index + 1}</span>
+              <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
                 {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={20} className="text-yellow-400/40" /></div>}
               </div>
-              <div className="min-w-0">
+              <div className="flex-1 min-w-0">
                 <p className="font-bold truncate">{song.title}</p>
-                <button type="button" onClick={() => song.artist?._id && onOpenArtist(song.artist._id)} className="text-xs text-gray-400 hover:text-yellow-300 truncate">
+                <button type="button" onClick={() => song.artist?._id && onOpenArtist(song.artist._id)} className="text-xs text-gray-400 hover:text-yellow-300 truncate block">
                   {song.artist?.username || 'Artista'}
                 </button>
               </div>
-              <button onClick={() => onPlaySong(song)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase">
-                Reproducir
+              <button onClick={() => onPlaySong(song)} className="p-2 md:px-3 md:py-2 rounded-xl bg-white/10 hover:bg-white/20 flex-shrink-0 flex items-center justify-center">
+                <Play size={16} fill="white" className="md:hidden" />
+                <span className="hidden md:inline text-xs font-bold uppercase">Reproducir</span>
               </button>
-              <span className="text-right text-gray-500 text-sm">{song.audioUrl ? 'MP3' : '--'}</span>
+              <span className="hidden md:block text-right text-gray-500 text-sm flex-shrink-0">{song.audioUrl ? 'MP3' : '--'}</span>
             </div>
           )) : <p className="text-gray-500">Esta playlist no tiene canciones.</p>}
         </div>
@@ -1342,9 +1394,9 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <form onSubmit={handleUpload} className="bg-[#121212] border border-white/10 w-full max-w-lg rounded-[40px] p-10 relative animate-in zoom-in-95">
-        <h2 className="text-3xl font-black italic mb-6 uppercase tracking-tighter text-white">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-start md:items-center justify-center p-4 overflow-y-auto">
+      <form onSubmit={handleUpload} className="bg-[#121212] border border-white/10 w-full max-w-lg rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
+<h2 className="text-2xl md:text-3xl font-black italic mb-5 md:mb-6 uppercase tracking-tighter text-white">
           SOLTAR <span className="text-yellow-400">NUEVO HIT</span>
         </h2>
 
