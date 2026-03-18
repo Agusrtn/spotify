@@ -30,12 +30,13 @@ function App() {
   const [authToken, setAuthToken] = useState(getStoredAuthToken);
   const [view, setView] = useState('inicio');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState({ artists: [], songs: [] });
+  const [searchResults, setSearchResults] = useState({ artists: [], songs: [], albums: [] });
   const [mySongs, setMySongs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [allSongs, setAllSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
+  const [albums, setAlbums] = useState([]);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -44,6 +45,7 @@ function App() {
   const [duration, setDuration] = useState(0);
   const [selectedSong, setSelectedSong] = useState(null);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+  const [selectedAlbum, setSelectedAlbum] = useState(null);
   const [artistProfile, setArtistProfile] = useState(null);
 
   const [settingsBio, setSettingsBio] = useState('');
@@ -56,6 +58,8 @@ function App() {
   const [memberActionLoading, setMemberActionLoading] = useState({});
   const [playlistForm, setPlaylistForm] = useState({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
   const [playlistSaving, setPlaylistSaving] = useState(false);
+  const [albumForm, setAlbumForm] = useState({ id: null, title: '', description: '', coverUrl: '', songIds: [] });
+  const [albumSaving, setAlbumSaving] = useState(false);
 
   const audioRef = useRef(null);
 
@@ -83,9 +87,22 @@ function App() {
     }
   };
 
+  const fetchAlbums = async () => {
+    try {
+      const res = await fetch(`${API_URL}/albums`);
+      if (res.ok) {
+        const data = await res.json();
+        setAlbums(data);
+      }
+    } catch (err) {
+      console.error('Error fetching albums:', err);
+    }
+  };
+
   useEffect(() => {
     fetchAllSongs();
     fetchPlaylists();
+    fetchAlbums();
   }, []);
 
   useEffect(() => {
@@ -112,6 +129,7 @@ function App() {
     const intervalId = setInterval(() => {
       fetchAllSongs();
       fetchPlaylists();
+      fetchAlbums();
       if (user?._id && (user.role === 'artist' || user.role === 'admin')) {
         fetchMySongs(user._id);
       }
@@ -231,7 +249,7 @@ function App() {
   const handleSearch = async (query) => {
     setSearchQuery(query);
     if (query.trim().length < 2) {
-      setSearchResults({ artists: [], songs: [] });
+      setSearchResults({ artists: [], songs: [], albums: [] });
       return;
     }
     try {
@@ -343,6 +361,108 @@ function App() {
     } catch (err) {
       console.error(err);
       alert('Error al eliminar playlist');
+    }
+  };
+
+  // ========== ALBUMS ==========
+  const resetAlbumForm = () => {
+    setAlbumForm({ id: null, title: '', description: '', coverUrl: '', songIds: [] });
+  };
+
+  const startEditAlbum = (album) => {
+    setAlbumForm({
+      id: album._id,
+      title: album.title || '',
+      description: album.description || '',
+      coverUrl: album.coverUrl || '',
+      songIds: album.songs?.map((song) => song._id) || [],
+    });
+  };
+
+  const toggleAlbumSong = (songId) => {
+    setAlbumForm((prev) => ({
+      ...prev,
+      songIds: prev.songIds.includes(songId)
+        ? prev.songIds.filter((id) => id !== songId)
+        : [...prev.songIds, songId],
+    }));
+  };
+
+  const saveAlbum = async (e) => {
+    e.preventDefault();
+    if (!albumForm.title.trim()) {
+      alert('El álbum necesita título');
+      return;
+    }
+
+    setAlbumSaving(true);
+    try {
+      const endpoint = albumForm.id
+        ? `${API_URL}/albums/${albumForm.id}`
+        : `${API_URL}/albums`;
+      const method = albumForm.id ? 'PUT' : 'POST';
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user._id,
+          title: albumForm.title,
+          description: albumForm.description,
+          coverUrl: albumForm.coverUrl,
+          songIds: albumForm.songIds,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || 'No se pudo guardar el álbum');
+        return;
+      }
+
+      if (albumForm.id) {
+        setAlbums((prev) => prev.map((album) => (album._id === data.album._id ? data.album : album)));
+      } else {
+        setAlbums((prev) => [data.album, ...prev]);
+      }
+
+      resetAlbumForm();
+      alert('Álbum guardado');
+    } catch (err) {
+      console.error(err);
+      alert('Error al guardar álbum');
+    } finally {
+      setAlbumSaving(false);
+    }
+  };
+
+  const deleteAlbum = async (albumId) => {
+    const confirmed = window.confirm('¿Eliminar este álbum?');
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`${API_URL}/albums/${albumId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || 'No se pudo eliminar el álbum');
+        return;
+      }
+
+      setAlbums((prev) => prev.filter((album) => album._id !== albumId));
+      if (selectedAlbum?._id === albumId) {
+        setSelectedAlbum(null);
+      }
+      if (albumForm.id === albumId) {
+        resetAlbumForm();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error al eliminar álbum');
     }
   };
 

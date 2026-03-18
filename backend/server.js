@@ -20,6 +20,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const User = require('./models/User'); 
 const Song = require('./models/Song');
 const Playlist = require('./models/Playlist');
+const Album = require('./models/Album');
 
 // Conexión a MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -492,7 +493,7 @@ app.get('/search-all', async (req, res) => {
   try {
     const query = (req.query.query || '').trim();
     if (!query) {
-      return res.json({ artists: [], songs: [] });
+      return res.json({ artists: [], songs: [], albums: [] });
     }
 
     const artists = await User.find({
@@ -508,7 +509,15 @@ app.get('/search-all', async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(20);
 
-    return res.json({ artists, songs });
+    const albums = await Album.find({
+      title: { $regex: query, $options: 'i' },
+    })
+      .populate('artist', 'username _id profilePic bio')
+      .populate('songs', 'title')
+      .sort({ releaseDate: -1 })
+      .limit(20);
+
+    return res.json({ artists, songs, albums });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al buscar contenido' });
@@ -528,7 +537,12 @@ app.get('/artists/:artistId', async (req, res) => {
       .populate('artist', 'username _id profilePic bio')
       .sort({ createdAt: -1 });
 
-    return res.json({ artist, songs });
+    const albums = await Album.find({ artist: artistId })
+      .populate('artist', 'username _id profilePic bio')
+      .populate('songs', 'title artist coverUrl')
+      .sort({ releaseDate: -1 });
+
+    return res.json({ artist, songs, albums });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener perfil del artista' });
@@ -717,6 +731,144 @@ app.delete('/admin/users/:userId', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al eliminar cuenta' });
+  }
+});
+
+// ============ ALBUMS ============
+
+// GET all albums
+app.get('/albums', async (req, res) => {
+  try {
+    const albums = await Album.find()
+      .populate('artist', 'username profilePic role')
+      .populate('songs', 'title artist coverUrl');
+    return res.json(albums);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener álbumes' });
+  }
+});
+
+// GET albums by artist
+app.get('/albums/artist/:artistId', async (req, res) => {
+  try {
+    const { artistId } = req.params;
+    const albums = await Album.find({ artist: artistId })
+      .populate('artist', 'username profilePic role')
+      .populate('songs', 'title artist coverUrl');
+    return res.json(albums);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener álbumes' });
+  }
+});
+
+// CREATE album (artist)
+app.post('/albums', async (req, res) => {
+  try {
+    const { title, description, coverUrl, userId } = req.body;
+
+    if (!title || !userId) {
+      return res.status(400).json({ error: 'Título y userId son requeridos' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    if (user.role !== 'artist' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo artistas y admins pueden crear álbumes' });
+    }
+
+    const album = new Album({
+      title,
+      description: description || '',
+      coverUrl: coverUrl || '',
+      artist: userId,
+      songs: [],
+    });
+
+    await album.save();
+    await album.populate('artist', 'username profilePic role');
+
+    return res.status(201).json({ album });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al crear álbum' });
+  }
+});
+
+// UPDATE album
+app.put('/albums/:albumId', async (req, res) => {
+  try {
+    const { albumId } = req.params;
+    const { title, description, coverUrl, songIds, userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId es requerido' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const album = await Album.findById(albumId);
+    if (!album) {
+      return res.status(404).json({ error: 'Álbum no encontrado' });
+    }
+
+    if (String(album.artist) !== String(userId) && user.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para editar este álbum' });
+    }
+
+    if (title) album.title = title;
+    if (description !== undefined) album.description = description;
+    if (coverUrl !== undefined) album.coverUrl = coverUrl;
+    if (Array.isArray(songIds)) album.songs = songIds;
+
+    await album.save();
+    await album.populate('artist', 'username profilePic role');
+    await album.populate('songs', 'title artist coverUrl');
+
+    return res.json({ album });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar álbum' });
+  }
+});
+
+// DELETE album
+app.delete('/albums/:albumId', async (req, res) => {
+  try {
+    const { albumId } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId es requerido' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const album = await Album.findById(albumId);
+    if (!album) {
+      return res.status(404).json({ error: 'Álbum no encontrado' });
+    }
+
+    if (String(album.artist) !== String(userId) && user.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para eliminar este álbum' });
+    }
+
+    await Album.findByIdAndDelete(albumId);
+
+    return res.json({ message: 'Álbum eliminado' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al eliminar álbum' });
   }
 });
 
