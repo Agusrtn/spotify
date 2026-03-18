@@ -4,6 +4,23 @@ import Login from './pages/Login';
 import { API_URL } from './config';
 import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check } from 'lucide-react';
 
+// Album gradient colors (similar to Spotify album art)
+const ALBUM_GRADIENTS = [
+  'from-red-600 via-pink-600 to-black',
+  'from-purple-600 via-pink-500 to-black',
+  'from-blue-600 via-cyan-500 to-black',
+  'from-green-600 via-emerald-500 to-black',
+  'from-orange-600 via-pink-500 to-black',
+  'from-indigo-600 via-purple-500 to-black',
+  'from-rose-600 via-red-500 to-black',
+  'from-amber-600 via-orange-500 to-black',
+];
+
+const getAlbumGradient = (albumId) => {
+  const index = albumId.charCodeAt(0) % ALBUM_GRADIENTS.length;
+  return ALBUM_GRADIENTS[index];
+};
+
 const AUTH_USER_STORAGE_KEY = 'rtnmusic.auth.user';
 const AUTH_TOKEN_STORAGE_KEY = 'rtnmusic.auth.token';
 
@@ -743,6 +760,40 @@ function App() {
             </div>
           </section>
 
+          <section className="mb-14">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl md:text-3xl font-black tracking-tight">Álbumes</h3>
+              <span className="text-sm text-gray-400 font-bold">Mostrar todos</span>
+            </div>
+
+            {albums.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                {albums.slice(0, 4).map((album) => (
+                  <button
+                    key={album._id}
+                    onClick={() => setSelectedAlbum(album)}
+                    className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                  >
+                    <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center relative">
+                      {album.coverUrl ? (
+                        <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <Disc size={64} className="text-white/40" />
+                      )}
+                    </div>
+                    <div className="p-4 bg-black/40 backdrop-blur-sm">
+                      <p className="font-black text-2xl leading-tight mb-2 text-white">{album.title}</p>
+                      <p className="text-white/70 text-sm">{album.artist?.username || 'Artista'}</p>
+                      <p className="text-white/50 text-xs mt-2">{album.songs?.length || 0} canciones</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No hay álbumes aún.</p>
+            )}
+          </section>
+
           <section className="mt-12">
             <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-6">Novedades en la Crew</h3>
             <div className="space-y-4">
@@ -828,6 +879,35 @@ function App() {
                   ))
                 ) : (
                   <p className="text-gray-500 text-sm col-span-full">No se encontraron artistas.</p>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-5">Álbumes</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {searchResults.albums?.length ? (
+                  searchResults.albums.map((album) => (
+                    <button
+                      key={album._id}
+                      onClick={() => setSelectedAlbum(album)}
+                      className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                    >
+                      <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center">
+                        {album.coverUrl ? (
+                          <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <Disc size={48} className="text-white/40" />
+                        )}
+                      </div>
+                      <div className="p-4 bg-black/40 backdrop-blur-sm">
+                        <p className="font-black text-lg leading-tight mb-1 text-white truncate">{album.title}</p>
+                        <p className="text-white/70 text-xs">{album.artist?.username || 'Artista'}</p>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-sm">No se encontraron álbumes.</p>
                 )}
               </div>
             </section>
@@ -928,6 +1008,35 @@ function App() {
                 })
               ) : (
                 <p className="text-gray-500 text-sm">Este artista no tiene canciones publicadas.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+            <p className="text-xs font-black text-gray-500 uppercase mb-6 tracking-widest">Álbumes del Artista</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {artistProfile.albums?.length > 0 ? (
+                artistProfile.albums.map((album) => (
+                  <button
+                    key={album._id}
+                    onClick={() => setSelectedAlbum(album)}
+                    className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                  >
+                    <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center">
+                      {album.coverUrl ? (
+                        <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <Disc size={48} className="text-white/40" />
+                      )}
+                    </div>
+                    <div className="p-4 bg-black/40 backdrop-blur-sm">
+                      <p className="font-black text-lg leading-tight mb-1 text-white">{album.title}</p>
+                      <p className="text-white/50 text-xs">{album.songs?.length || 0} canciones</p>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <p className="text-gray-500 text-sm">Este artista no tiene álbumes.</p>
               )}
             </div>
           </div>
@@ -1249,6 +1358,17 @@ function App() {
         }}
         onOpenArtist={openArtistProfile}
       />
+
+      <AlbumDetailPanel
+        album={selectedAlbum}
+        onClose={() => setSelectedAlbum(null)}
+        user={user}
+        onPlaySong={(song) => {
+          const idx = allSongs.findIndex((item) => item._id === song._id);
+          playSong(song, idx >= 0 ? idx : 0);
+        }}
+        onOpenArtist={openArtistProfile}
+      />
     </Layout>
   );
 }
@@ -1452,6 +1572,64 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
               <span className="hidden md:block text-right text-gray-500 text-sm flex-shrink-0">{song.audioUrl ? 'MP3' : '--'}</span>
             </div>
           )) : <p className="text-gray-500">Esta playlist no tiene canciones.</p>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist }) => {
+  if (!album) return null;
+
+  const gradient = getAlbumGradient(album._id);
+
+  return (
+    <div className="fixed inset-0 z-[105] bg-black/85 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
+      <div className={`max-w-6xl mx-auto bg-gradient-to-b ${gradient} rounded-3xl border border-white/10 overflow-hidden`}>
+        <div className="p-6 md:p-10 flex flex-col md:flex-row gap-6 items-end">
+          <div className="w-48 h-48 md:w-64 md:h-64 rounded-2xl overflow-hidden bg-black/30 border border-white/10">
+            {album.coverUrl ? (
+              <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
+            ) : album.songs?.[0]?.coverUrl ? (
+              <img src={album.songs[0].coverUrl} alt={album.title} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center"><Disc size={72} className="text-white/40" /></div>
+            )}
+          </div>
+          <div className="flex-1">
+            <p className="text-sm uppercase tracking-[0.3em] text-white/70 font-black">Álbum</p>
+            <h2 className="text-5xl md:text-7xl font-black tracking-tight text-white">{album.title}</h2>
+            <button
+              type="button"
+              onClick={() => album.artist?._id && onOpenArtist(album.artist._id)}
+              className="mt-3 text-white/80 font-semibold hover:text-yellow-300 text-lg"
+            >
+              {album.artist?.username || 'Artista'}
+            </button>
+            <p className="mt-4 text-white/70 font-semibold">{album.songs?.length || 0} canciones</p>
+          </div>
+          <button onClick={onClose} className="self-start md:self-auto p-3 rounded-xl bg-black/30 hover:bg-black/50 transition"><X size={20} /></button>
+        </div>
+
+        <div className="border-t border-white/10 px-6 md:px-10 py-6 bg-black/40 space-y-3">
+          {album.songs?.length ? album.songs.map((song, index) => (
+            <div key={song._id} className="flex items-center gap-3 py-3 border-b border-white/5">
+              <span className="hidden md:block text-white/50 font-bold w-7 text-center flex-shrink-0">{index + 1}</span>
+              <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={20} className="text-white/40" /></div>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-white truncate">{song.title}</p>
+                <button type="button" onClick={() => song.artist?._id && onOpenArtist(song.artist._id)} className="text-xs text-white/60 hover:text-yellow-300 truncate block">
+                  {song.artist?.username || 'Artista'}
+                </button>
+              </div>
+              <button onClick={() => onPlaySong(song)} className="p-2 md:px-3 md:py-2 rounded-xl bg-white/10 hover:bg-white/20 flex-shrink-0 flex items-center justify-center">
+                <Play size={16} fill="white" className="md:hidden" />
+                <span className="hidden md:inline text-xs font-bold uppercase text-white">Reproducir</span>
+              </button>
+            </div>
+          )) : <p className="text-white/60">Este álbum no tiene canciones.</p>}
         </div>
       </div>
     </div>
