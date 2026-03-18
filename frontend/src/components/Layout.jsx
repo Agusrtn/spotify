@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, Disc, ShieldAlert } from 'lucide-react';
+import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, Disc, ShieldAlert, Upload } from 'lucide-react';
 
 const Layout = ({ 
   children, 
@@ -276,6 +276,17 @@ const Layout = ({
             <Search size={22} className={view === 'buscar' ? 'text-yellow-400' : 'text-gray-500'} />
             <span className={`text-[9px] font-bold ${view === 'buscar' ? 'text-yellow-400' : 'text-gray-500'}`}>Explorar</span>
           </button>
+          {(user.role === 'artist' || user.role === 'admin') && (
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex flex-col items-center gap-0.5 py-1 px-2"
+            >
+              <div className="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg shadow-yellow-400/30 -mt-3">
+                <Upload size={18} className="text-black" />
+              </div>
+              <span className="text-[9px] font-bold text-yellow-400">Subir</span>
+            </button>
+          )}
           <button onClick={() => setView('perfil')} className="flex flex-col items-center gap-0.5 py-1 px-3">
             <Library size={22} className={view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'} />
             <span className={`text-[9px] font-bold ${view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'}`}>Mi Crew</span>
