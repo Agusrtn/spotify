@@ -82,6 +82,7 @@ function App() {
   const [mySongs, setMySongs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false);
+  const [albumToEdit, setAlbumToEdit] = useState(null);
   const [activeArtistTab, setActiveArtistTab] = useState('info');
 
   const [allSongs, setAllSongs] = useState([]);
@@ -1493,10 +1494,15 @@ function App() {
 
       <AlbumCreateModal
         isOpen={isAlbumModalOpen}
-        onClose={() => setIsAlbumModalOpen(false)}
+        onClose={() => { setIsAlbumModalOpen(false); setAlbumToEdit(null); }}
         user={user}
         allSongs={allSongs}
         fetchAlbums={fetchAlbums}
+        albumToEdit={albumToEdit}
+        onAlbumUpdated={(updated) => {
+          setAlbums((prev) => prev.map((a) => a._id === updated._id ? updated : a));
+          setSelectedAlbum(updated);
+        }}
       />
 
       <SongDetailPanel
@@ -1531,6 +1537,27 @@ function App() {
           playSong(song, idx >= 0 ? idx : 0);
         }}
         onOpenArtist={openArtistProfile}
+        onEdit={(album) => {
+          setAlbumToEdit(album);
+          setIsAlbumModalOpen(true);
+        }}
+        onDelete={async (albumId) => {
+          if (!window.confirm('¿Eliminar este álbum?')) return;
+          try {
+            const res = await fetch(`${API_URL}/albums/${albumId}`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user._id }),
+            });
+            if (res.ok) {
+              setAlbums((prev) => prev.filter((a) => a._id !== albumId));
+              setSelectedAlbum(null);
+            } else {
+              const d = await res.json().catch(() => ({}));
+              alert(d.error || 'Error al eliminar');
+            }
+          } catch { alert('Error al conectar'); }
+        }}
       />
     </Layout>
   );
@@ -1741,10 +1768,11 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
   );
 };
 
-const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist }) => {
+const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onEdit, onDelete }) => {
   if (!album) return null;
 
   const gradient = getAlbumGradient(album._id);
+  const isOwner = user && (String(user._id) === String(album.artist?._id) || user.role === 'admin');
 
   return (
     <div className="fixed inset-0 z-[105] bg-black/85 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
@@ -1769,7 +1797,23 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist }) =>
             >
               {album.artist?.username || 'Artista'}
             </button>
-            <p className="mt-4 text-white/70 font-semibold">{album.songs?.length || 0} canciones</p>
+            <p className="mt-2 text-white/70 font-semibold">{album.songs?.length || 0} canciones</p>
+            {isOwner && (
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => onEdit(album)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-widest transition-all"
+                >
+                  <Edit3 size={14} /> Editar
+                </button>
+                <button
+                  onClick={() => onDelete(album._id)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600/30 hover:bg-red-600/60 text-red-400 hover:text-white text-xs font-bold uppercase tracking-widest transition-all"
+                >
+                  <Trash2 size={14} /> Eliminar
+                </button>
+              </div>
+            )}
           </div>
           <button onClick={onClose} className="self-start md:self-auto p-3 rounded-xl bg-black/30 hover:bg-black/50 transition"><X size={20} /></button>
         </div>
@@ -1799,7 +1843,8 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist }) =>
   );
 };
 
-const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums }) => {
+const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumToEdit, onAlbumUpdated }) => {
+  const isEditing = !!albumToEdit;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
@@ -1809,9 +1854,21 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums }) => {
 
   useEffect(() => {
     if (isOpen) {
-      setPreviewGradient(getRandomAlbumGradient());
+      if (albumToEdit) {
+        setTitle(albumToEdit.title || '');
+        setDescription(albumToEdit.description || '');
+        setCoverUrl(albumToEdit.coverUrl || '');
+        setSelectedSongs(albumToEdit.songs?.map((s) => s._id || s) || []);
+        setPreviewGradient(getAlbumGradient(albumToEdit._id));
+      } else {
+        setTitle('');
+        setDescription('');
+        setCoverUrl('');
+        setSelectedSongs([]);
+        setPreviewGradient(getRandomAlbumGradient());
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, albumToEdit]);
 
   if (!isOpen) return null;
 
@@ -1823,14 +1880,16 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums }) => {
     }
   };
 
-  const handleCreateAlbum = async (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!title.trim()) return alert('El título del álbum es obligatorio');
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/albums`, {
-        method: 'POST',
+      const endpoint = isEditing ? `${API_URL}/albums/${albumToEdit._id}` : `${API_URL}/albums`;
+      const method = isEditing ? 'PUT' : 'POST';
+      const res = await fetch(endpoint, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user._id,
@@ -1844,16 +1903,14 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums }) => {
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
-        alert('Álbum creado!');
-        setTitle('');
-        setDescription('');
-        setCoverUrl('');
-        setSelectedSongs([]);
-        setPreviewGradient(getRandomAlbumGradient());
+        if (isEditing) {
+          onAlbumUpdated && onAlbumUpdated(data.album);
+        } else {
+          fetchAlbums();
+        }
         onClose();
-        fetchAlbums();
       } else {
-        alert(data.error || 'Error al crear el álbum');
+        alert(data.error || 'Error al guardar el álbum');
       }
     } catch (err) {
       console.error(err);
@@ -1866,10 +1923,10 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums }) => {
   const userSongs = allSongs.filter((song) => String(song.artist?._id) === String(user._id));
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-start md:items-center justify-center p-4 overflow-y-auto">
-      <form onSubmit={handleCreateAlbum} className="bg-[#121212] border border-white/10 w-full max-w-2xl rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-start md:items-center justify-center p-4 overflow-y-auto">
+      <form onSubmit={handleSave} className="bg-[#121212] border border-white/10 w-full max-w-2xl rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
         <h2 className="text-2xl md:text-3xl font-black italic mb-6 md:mb-8 uppercase tracking-tighter text-white">
-          CREAR <span className="text-yellow-400">NUEVO ÁLBUM</span>
+          {isEditing ? <><span className="text-yellow-400">EDITAR</span> ÁLBUM</> : <>CREAR <span className="text-yellow-400">NUEVO ÁLBUM</span></>}
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -1951,7 +2008,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums }) => {
             disabled={loading}
             className="flex-1 bg-yellow-400 text-black font-black py-4 rounded-2xl uppercase tracking-widest text-[10px] shadow-lg shadow-yellow-400/20 disabled:opacity-50 hover:bg-yellow-300 transition-all"
           >
-            {loading ? 'CREANDO...' : 'CREAR ÁLBUM'}
+            {loading ? 'GUARDANDO...' : isEditing ? 'GUARDAR CAMBIOS' : 'CREAR ÁLBUM'}
           </button>
         </div>
       </form>
