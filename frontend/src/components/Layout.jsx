@@ -114,13 +114,13 @@ const Layout = ({
         {/* Aurora background - behind everything */}
         <div className="fixed top-0 bottom-0 right-0 left-0 md:left-64 pointer-events-none" style={{ zIndex: 0 }}>
           <Aurora
-            colorStops={['#ffd666', '#fa9200', '#895206']}
+            colorStops={['#f99406', '#bc7701', '#ff9500']}
             amplitude={1}
-            blend={0.6}
-            speed={0.5}
+            blend={0.5}
+            speed={1}
           />
           {/* Dark overlay so content stays readable */}
-          <div className="absolute inset-0 bg-black/80" />
+          <div className="absolute inset-0 bg-black/70" />
         </div>
 
         <header className="sticky top-0 flex items-center justify-between px-4 md:px-10 py-4 md:py-6 bg-black/10 backdrop-blur-md border-b border-white/5" style={{ zIndex: 10 }}>
