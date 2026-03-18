@@ -124,6 +124,9 @@ function App() {
   const [albumSaving, setAlbumSaving] = useState(false);
 
   const audioRef = useRef(null);
+  const activeSongIdRef = useRef(null);
+  const lastTrackedPositionRef = useRef(0);
+  const pendingListenSecondsRef = useRef(0);
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
@@ -204,6 +207,46 @@ function App() {
     }
   };
 
+  const registerSongListenTime = async (songId, seconds) => {
+    if (!songId) return;
+    const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (safeSeconds <= 0) return;
+    try {
+      await fetch(`${API_URL}/songs/${songId}/listen-time`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seconds: safeSeconds }),
+      });
+    } catch (err) {
+      console.error('Error tracking listen time:', err);
+    }
+  };
+
+  const flushPendingListenTime = async () => {
+    const songId = activeSongIdRef.current;
+    const pending = pendingListenSecondsRef.current;
+    if (!songId || pending < 1) return;
+
+    pendingListenSecondsRef.current = 0;
+    await registerSongListenTime(songId, pending);
+
+    setAllSongs((prev) => prev.map((song) => (
+      song._id === songId
+        ? { ...song, listenSeconds: Number(song.listenSeconds || 0) + Math.floor(pending) }
+        : song
+    )));
+  };
+
+  const formatListenTime = (seconds) => {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
+
   const shareLink = async (type, itemId, label) => {
     try {
       const url = `${window.location.origin}?${type}=${itemId}`;
@@ -269,6 +312,19 @@ function App() {
     if (isPlaying) audioRef.current.play().catch(() => {});
     else audioRef.current.pause();
   }, [isPlaying, currentSong]);
+
+  useEffect(() => {
+    if (isPlaying) return;
+    flushPendingListenTime();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying]);
+
+  useEffect(() => {
+    return () => {
+      flushPendingListenTime();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (user) setSettingsBio(user.bio || '');
@@ -344,6 +400,8 @@ function App() {
   };
 
   const playSong = (song, index, options = {}) => {
+    flushPendingListenTime();
+
     const queue = options.queue || allSongs;
     const mode = options.mode || 'all';
     setCurrentSong(song);
@@ -353,6 +411,9 @@ function App() {
     setPlayMode(mode);
     setIsPlaying(true);
     setCurrentTime(0);
+    activeSongIdRef.current = song?._id || null;
+    lastTrackedPositionRef.current = 0;
+    pendingListenSecondsRef.current = 0;
 
     if (song?._id) {
       registerSongPlay(song._id);
@@ -362,6 +423,26 @@ function App() {
           : item
       )));
     }
+  };
+
+  const handlePlaybackTimeUpdate = (time) => {
+    setCurrentTime(time);
+
+    const songId = activeSongIdRef.current;
+    if (!isPlaying || !songId) {
+      lastTrackedPositionRef.current = time;
+      return;
+    }
+
+    const delta = Number(time) - Number(lastTrackedPositionRef.current || 0);
+    if (delta > 0 && delta < 5) {
+      pendingListenSecondsRef.current += delta;
+      if (pendingListenSecondsRef.current >= 5) {
+        flushPendingListenTime();
+      }
+    }
+
+    lastTrackedPositionRef.current = time;
   };
 
   const togglePlay = () => setIsPlaying(!isPlaying);
@@ -907,7 +988,7 @@ function App() {
       currentTime={currentTime}
       duration={duration}
       audioRef={audioRef}
-      onTimeUpdate={(time) => setCurrentTime(time)}
+      onTimeUpdate={handlePlaybackTimeUpdate}
       onDurationChange={(dur) => setDuration(dur)}
       onSongEnd={handleSongEnd}
       onOpenArtist={openArtistProfile}
@@ -1184,8 +1265,8 @@ function App() {
               {(user.role === 'artist' || user.role === 'admin') && artistStats && (
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
-                    <p className="text-[10px] text-gray-500 uppercase font-bold">Total Plays</p>
-                    <p className="text-2xl font-black text-yellow-400">{artistStats.totals?.plays || 0}</p>
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Tiempo Escuchado</p>
+                    <p className="text-2xl font-black text-yellow-400">{formatListenTime(artistStats.totals?.listenSeconds || 0)}</p>
                   </div>
                   <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
                     <p className="text-[10px] text-gray-500 uppercase font-bold">Canciones</p>
@@ -1331,8 +1412,8 @@ function App() {
                 <>
                   <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
-                      <p className="text-[10px] text-gray-500 uppercase font-bold">Total Plays</p>
-                      <p className="text-2xl font-black text-yellow-400">{artistStats.totals?.plays || 0}</p>
+                      <p className="text-[10px] text-gray-500 uppercase font-bold">Tiempo Escuchado</p>
+                      <p className="text-2xl font-black text-yellow-400">{formatListenTime(artistStats.totals?.listenSeconds || 0)}</p>
                     </div>
                     <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
                       <p className="text-[10px] text-gray-500 uppercase font-bold">Canciones</p>
@@ -1348,9 +1429,9 @@ function App() {
                     {artistStats.topSongs?.length ? artistStats.topSongs.map((song, idx) => (
                       <div key={song._id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-b-0">
                         <p className="text-sm"><span className="text-yellow-400 font-black mr-2">#{idx + 1}</span>{song.title}</p>
-                        <p className="text-xs text-gray-400">{Number(song.playCount || 0)} plays</p>
+                        <p className="text-xs text-gray-400">{formatListenTime(song.listenSeconds || 0)}</p>
                       </div>
-                    )) : <p className="text-sm text-gray-500">Aún sin reproducciones.</p>}
+                    )) : <p className="text-sm text-gray-500">Aún sin tiempo escuchado.</p>}
                   </div>
                 </>
               )}
@@ -1426,7 +1507,7 @@ function App() {
 
           <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
             <div className="flex items-center justify-between mb-6">
-              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Top Reproducciones Global</p>
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Top Tiempo Escuchado Global</p>
               <button onClick={fetchAdminTopSongs} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar ranking</button>
             </div>
 
@@ -1445,14 +1526,14 @@ function App() {
                       <p className="text-[10px] text-gray-400 uppercase tracking-widest truncate">{song.artist?.username || 'Artista'}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-yellow-300 font-black text-lg">{Number(song.playCount || 0)}</p>
-                      <p className="text-[10px] text-gray-500 uppercase">reproducciones</p>
+                      <p className="text-yellow-300 font-black text-lg">{formatListenTime(song.listenSeconds || 0)}</p>
+                      <p className="text-[10px] text-gray-500 uppercase">tiempo escuchado</p>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">Sin reproducciones todavía.</p>
+              <p className="text-gray-500 text-sm">Sin tiempo escuchado todavía.</p>
             )}
           </section>
 

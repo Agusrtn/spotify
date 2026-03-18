@@ -337,6 +337,30 @@ app.post('/songs/:songId/play', async (req, res) => {
   }
 });
 
+app.post('/songs/:songId/listen-time', async (req, res) => {
+  try {
+    const { songId } = req.params;
+    const seconds = Number(req.body?.seconds || 0);
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return res.status(400).json({ error: 'seconds inválido' });
+    }
+
+    const safeSeconds = Math.min(Math.floor(seconds), 600);
+    const song = await Song.findById(songId);
+    if (!song) {
+      return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+
+    song.listenSeconds = Number(song.listenSeconds || 0) + safeSeconds;
+    await song.save();
+
+    return res.json({ ok: true, songId: song._id, listenSeconds: song.listenSeconds });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al registrar tiempo escuchado' });
+  }
+});
+
 app.get('/playlists', async (req, res) => {
   try {
     const playlists = await Playlist.find({ isPublic: true })
@@ -517,7 +541,7 @@ app.get('/search-all', async (req, res) => {
       return res.json({ artists: [], songs: [], albums: [] });
     }
 
-    const songSort = sort === 'popular' ? { playCount: -1, createdAt: -1 } : { createdAt: -1 };
+    const songSort = sort === 'popular' ? { listenSeconds: -1, playCount: -1, createdAt: -1 } : { createdAt: -1 };
     const artists = type === 'all' || type === 'artists'
       ? await User.find({
         username: { $regex: query, $options: 'i' },
@@ -586,11 +610,12 @@ app.get('/artists/:artistId/stats', async (req, res) => {
       return res.status(404).json({ error: 'Artista no encontrado' });
     }
 
-    const songs = await Song.find({ artist: artistId }).select('_id title playCount createdAt');
+    const songs = await Song.find({ artist: artistId }).select('_id title playCount listenSeconds createdAt');
     const albumsCount = await Album.countDocuments({ artist: artistId });
     const totalPlays = songs.reduce((acc, song) => acc + Number(song.playCount || 0), 0);
+    const totalListenSeconds = songs.reduce((acc, song) => acc + Number(song.listenSeconds || 0), 0);
     const topSongs = [...songs]
-      .sort((a, b) => Number(b.playCount || 0) - Number(a.playCount || 0))
+      .sort((a, b) => Number(b.listenSeconds || 0) - Number(a.listenSeconds || 0) || Number(b.playCount || 0) - Number(a.playCount || 0))
       .slice(0, 5);
 
     return res.json({
@@ -599,6 +624,7 @@ app.get('/artists/:artistId/stats', async (req, res) => {
         songs: songs.length,
         albums: albumsCount,
         plays: totalPlays,
+        listenSeconds: totalListenSeconds,
       },
       topSongs,
     });
@@ -623,7 +649,7 @@ app.get('/admin/top-songs', async (req, res) => {
 
     const topSongs = await Song.find()
       .populate('artist', 'username _id profilePic')
-      .sort({ playCount: -1, createdAt: -1 })
+      .sort({ listenSeconds: -1, playCount: -1, createdAt: -1 })
       .limit(limit);
 
     return res.json({ songs: topSongs });
