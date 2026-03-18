@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { API_URL } from './config';
-import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check } from 'lucide-react';
+import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2 } from 'lucide-react';
 
 // Album gradient colors (similar to Spotify album art)
 const ALBUM_GRADIENTS = [
@@ -79,6 +79,9 @@ function App() {
   const [view, setView] = useState('inicio');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState({ artists: [], songs: [], albums: [] });
+  const [searchType, setSearchType] = useState('all');
+  const [searchSort, setSearchSort] = useState('recent');
+  const [searchLoading, setSearchLoading] = useState(false);
   const [mySongs, setMySongs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false);
@@ -101,6 +104,10 @@ function App() {
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [selectedAlbum, setSelectedAlbum] = useState(null);
   const [artistProfile, setArtistProfile] = useState(null);
+  const [artistStats, setArtistStats] = useState(null);
+  const [adminTopSongs, setAdminTopSongs] = useState([]);
+  const [adminTopLoading, setAdminTopLoading] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const [settingsBio, setSettingsBio] = useState('');
   const [settingsPic, setSettingsPic] = useState(null);
@@ -117,6 +124,10 @@ function App() {
   const [albumSaving, setAlbumSaving] = useState(false);
 
   const audioRef = useRef(null);
+
+  const showToast = (message, type = 'info') => {
+    setToast({ message, type });
+  };
 
   const fetchAllSongs = async () => {
     try {
@@ -154,11 +165,67 @@ function App() {
     }
   };
 
+  const fetchArtistStats = async (artistId) => {
+    try {
+      const res = await fetch(`${API_URL}/artists/${artistId}/stats`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setArtistStats(data);
+    } catch (err) {
+      console.error('Error fetching artist stats:', err);
+    }
+  };
+
+  const fetchAdminTopSongs = async () => {
+    if (!user?._id || user.role !== 'admin') return;
+    setAdminTopLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/top-songs?requesterId=${user._id}&limit=20`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo cargar el top', 'error');
+        return;
+      }
+      setAdminTopSongs(data.songs || []);
+    } catch (err) {
+      console.error('Error fetching top songs:', err);
+      showToast('Error al cargar top canciones', 'error');
+    } finally {
+      setAdminTopLoading(false);
+    }
+  };
+
+  const registerSongPlay = async (songId) => {
+    if (!songId) return;
+    try {
+      await fetch(`${API_URL}/songs/${songId}/play`, { method: 'POST' });
+    } catch (err) {
+      console.error('Error tracking play:', err);
+    }
+  };
+
+  const shareLink = async (type, itemId, label) => {
+    try {
+      const url = `${window.location.origin}?${type}=${itemId}`;
+      await navigator.clipboard.writeText(url);
+      showToast(`Enlace de ${label} copiado`, 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('No se pudo copiar el enlace', 'error');
+    }
+  };
+
   useEffect(() => {
     fetchAllSongs();
     fetchPlaylists();
     fetchAlbums();
   }, []);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timeoutId = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(timeoutId);
+  }, [toast]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -212,6 +279,7 @@ function App() {
       fetchMembers();
       fetchAllSongs();
       fetchPlaylists();
+      fetchAdminTopSongs();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, user]);
@@ -219,8 +287,15 @@ function App() {
   useEffect(() => {
     if (user?._id && (user.role === 'artist' || user.role === 'admin')) {
       fetchMySongs(user._id);
+      fetchArtistStats(user._id);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (view === 'artist' && artistProfile?.artist?._id) {
+      fetchArtistStats(artistProfile.artist._id);
+    }
+  }, [view, artistProfile]);
 
   useEffect(() => {
     if (isModalOpen && user?.role === 'admin') {
@@ -278,6 +353,15 @@ function App() {
     setPlayMode(mode);
     setIsPlaying(true);
     setCurrentTime(0);
+
+    if (song?._id) {
+      registerSongPlay(song._id);
+      setAllSongs((prev) => prev.map((item) => (
+        item._id === song._id
+          ? { ...item, playCount: Number(item.playCount || 0) + 1, lastPlayedAt: new Date().toISOString() }
+          : item
+      )));
+    }
   };
 
   const togglePlay = () => setIsPlaying(!isPlaying);
@@ -354,16 +438,32 @@ function App() {
     setSearchQuery(query);
     if (query.trim().length < 2) {
       setSearchResults({ artists: [], songs: [], albums: [] });
+      setSearchLoading(false);
       return;
     }
+    setSearchLoading(true);
     try {
-      const res = await fetch(`${API_URL}/search-all?query=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({
+        query: query,
+        type: searchType,
+        sort: searchSort,
+      });
+      const res = await fetch(`${API_URL}/search-all?${params.toString()}`);
       const data = await res.json();
       if (res.ok) setSearchResults(data);
     } catch (err) {
       console.error(err);
+    } finally {
+      setSearchLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (view !== 'buscar') return;
+    if (searchQuery.trim().length < 2) return;
+    handleSearch(searchQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchType, searchSort]);
 
   const resetPlaylistForm = () => {
     setPlaylistForm({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
@@ -875,7 +975,7 @@ function App() {
                     <div className="p-4 bg-black/40 backdrop-blur-sm">
                       <p className="font-black text-2xl leading-tight mb-2 text-white">{album.title}</p>
                       <p className="text-white/70 text-sm">{album.artist?.username || 'Artista'}</p>
-                      <p className="text-white/50 text-xs mt-2">{album.songs?.length || 0} canciones</p>
+                      <p className="text-white/50 text-xs mt-2">{album.songs?.length || 0} canciones • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
                     </div>
                   </button>
                 ))}
@@ -921,6 +1021,33 @@ function App() {
             className="w-full bg-white/5 border border-white/10 p-4 md:p-6 rounded-[30px] text-lg md:text-2xl outline-none focus:border-yellow-400 transition-all mb-6 md:mb-10 font-bold"
             onChange={(e) => handleSearch(e.target.value)}
           />
+
+          <div className="flex flex-col md:flex-row gap-3 mb-8">
+            <select
+              value={searchType}
+              onChange={(e) => setSearchType(e.target.value)}
+              className="bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold uppercase"
+            >
+              <option value="all">Todo</option>
+              <option value="songs">Solo canciones</option>
+              <option value="artists">Solo artistas</option>
+              <option value="albums">Solo álbumes</option>
+            </select>
+            <select
+              value={searchSort}
+              onChange={(e) => setSearchSort(e.target.value)}
+              className="bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold uppercase"
+            >
+              <option value="recent">Más reciente</option>
+              <option value="popular">Más popular</option>
+            </select>
+          </div>
+
+          {searchLoading && (
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 text-sm text-yellow-300 font-bold">
+              Buscando resultados...
+            </div>
+          )}
 
           <div className="space-y-10">
             <section>
@@ -993,7 +1120,7 @@ function App() {
                       </div>
                       <div className="p-4 bg-black/40 backdrop-blur-sm">
                         <p className="font-black text-lg leading-tight mb-1 text-white truncate">{album.title}</p>
-                        <p className="text-white/70 text-xs">{album.artist?.username || 'Artista'}</p>
+                        <p className="text-white/70 text-xs">{album.artist?.username || 'Artista'} • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
                       </div>
                     </button>
                   ))
@@ -1054,6 +1181,22 @@ function App() {
             <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
               <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia de Artista</p>
               <p className="text-xl text-gray-300 italic">"{user.bio || 'Nueva leyenda de RTN MUSIC'}"</p>
+              {(user.role === 'artist' || user.role === 'admin') && artistStats && (
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Total Plays</p>
+                    <p className="text-2xl font-black text-yellow-400">{artistStats.totals?.plays || 0}</p>
+                  </div>
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Canciones</p>
+                    <p className="text-2xl font-black">{artistStats.totals?.songs || 0}</p>
+                  </div>
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
+                    <p className="text-[10px] text-gray-500 uppercase font-bold">Álbumes</p>
+                    <p className="text-2xl font-black">{artistStats.totals?.albums || 0}</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1184,6 +1327,33 @@ function App() {
             <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
               <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia</p>
               <p className="text-lg text-gray-300">{artistProfile.artist.bio || 'Este artista no tiene bio aun.'}</p>
+              {artistStats && (
+                <>
+                  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
+                      <p className="text-[10px] text-gray-500 uppercase font-bold">Total Plays</p>
+                      <p className="text-2xl font-black text-yellow-400">{artistStats.totals?.plays || 0}</p>
+                    </div>
+                    <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
+                      <p className="text-[10px] text-gray-500 uppercase font-bold">Canciones</p>
+                      <p className="text-2xl font-black">{artistStats.totals?.songs || 0}</p>
+                    </div>
+                    <div className="bg-black/30 border border-white/10 rounded-2xl p-4">
+                      <p className="text-[10px] text-gray-500 uppercase font-bold">Álbumes</p>
+                      <p className="text-2xl font-black">{artistStats.totals?.albums || 0}</p>
+                    </div>
+                  </div>
+                  <div className="mt-6 bg-black/30 border border-white/10 rounded-2xl p-4">
+                    <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Top Canciones</p>
+                    {artistStats.topSongs?.length ? artistStats.topSongs.map((song, idx) => (
+                      <div key={song._id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-b-0">
+                        <p className="text-sm"><span className="text-yellow-400 font-black mr-2">#{idx + 1}</span>{song.title}</p>
+                        <p className="text-xs text-gray-400">{Number(song.playCount || 0)} plays</p>
+                      </div>
+                    )) : <p className="text-sm text-gray-500">Aún sin reproducciones.</p>}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1253,6 +1423,38 @@ function App() {
       {view === 'admin' && user.role === 'admin' && (
         <div className="animate-in fade-in duration-500 space-y-8">
           <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter">Panel de Administrador</h2>
+
+          <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Top Reproducciones Global</p>
+              <button onClick={fetchAdminTopSongs} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar ranking</button>
+            </div>
+
+            {adminTopLoading ? (
+              <p className="text-gray-500 text-sm">Cargando ranking...</p>
+            ) : adminTopSongs.length > 0 ? (
+              <div className="space-y-3">
+                {adminTopSongs.map((song, idx) => (
+                  <div key={song._id} className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-2xl p-3">
+                    <div className="w-12 text-center font-black text-yellow-400">TOP {idx + 1}</div>
+                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-black/40 flex-shrink-0">
+                      {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Trophy size={18} className="text-yellow-400/60" /></div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold truncate">{song.title}</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-widest truncate">{song.artist?.username || 'Artista'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-yellow-300 font-black text-lg">{Number(song.playCount || 0)}</p>
+                      <p className="text-[10px] text-gray-500 uppercase">reproducciones</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">Sin reproducciones todavía.</p>
+            )}
+          </section>
 
           <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
             <div className="flex items-center justify-between mb-6">
@@ -1474,6 +1676,14 @@ function App() {
         </div>
       )}
 
+      {toast && (
+        <div className="fixed bottom-28 right-4 z-[200]">
+          <div className={`px-4 py-3 rounded-2xl border shadow-2xl text-sm font-bold ${toast.type === 'error' ? 'bg-red-900/90 border-red-500 text-red-100' : 'bg-black/90 border-yellow-400/40 text-yellow-200'}`}>
+            {toast.message}
+          </div>
+        </div>
+      )}
+
       {view === 'ajustes' && (
         <div className="animate-in fade-in duration-500">
           <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter mb-6 md:mb-8">Ajustes de Mi Crew</h2>
@@ -1567,6 +1777,7 @@ function App() {
         onSave={handleSaveSongChanges}
         onDelete={handleDeleteSong}
         onOpenArtist={openArtistProfile}
+        onShare={(songId) => shareLink('song', songId, 'la canción')}
       />
 
       <PlaylistDetailPanel
@@ -1593,6 +1804,7 @@ function App() {
           playSong(playableSong, safeIndex, { queue: normalizedAlbumSongs, mode: 'album' });
         }}
         onOpenArtist={openArtistProfile}
+        onShare={(albumId) => shareLink('album', albumId, 'el álbum')}
         onEdit={(album) => {
           setAlbumToEdit(album);
           setIsAlbumModalOpen(true);
@@ -1655,7 +1867,7 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick }) => (
   </div>
 );
 
-const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpenArtist }) => {
+const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpenArtist, onShare }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -1712,6 +1924,9 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
           <div className="flex items-center gap-3 mb-8">
             <button onClick={() => onPlay(song)} className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-400 text-black flex items-center justify-center transition">
               <Play fill="black" size={22} className="ml-0.5" />
+            </button>
+            <button onClick={() => onShare(song._id)} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
+              <Share2 size={15} /> Compartir
             </button>
             {canEdit && !isEditing && (
               <button onClick={() => setIsEditing(true)} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
@@ -1824,7 +2039,7 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
   );
 };
 
-const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onEdit, onDelete }) => {
+const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onShare, onEdit, onDelete }) => {
   if (!album) return null;
 
   const gradient = getAlbumGradient(album._id);
@@ -1853,9 +2068,15 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onEd
             >
               {album.artist?.username || 'Artista'}
             </button>
-            <p className="mt-2 text-white/70 font-semibold">{album.songs?.length || 0} canciones</p>
+            <p className="mt-2 text-white/70 font-semibold">{album.songs?.length || 0} canciones • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
             {isOwner && (
               <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => onShare(album._id)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-widest transition-all"
+                >
+                  <Share2 size={14} /> Compartir
+                </button>
                 <button
                   onClick={() => onEdit(album)}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-widest transition-all"
@@ -1907,6 +2128,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
+  const [releaseYear, setReleaseYear] = useState(new Date().getFullYear());
   const [selectedSongs, setSelectedSongs] = useState([]);
   const [previewGradient, setPreviewGradient] = useState(getRandomAlbumGradient());
   const [loading, setLoading] = useState(false);
@@ -1917,12 +2139,14 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
         setTitle(albumToEdit.title || '');
         setDescription(albumToEdit.description || '');
         setCoverUrl(albumToEdit.coverUrl || '');
+        setReleaseYear(Number(albumToEdit.releaseYear) || new Date().getFullYear());
         setSelectedSongs(albumToEdit.songs?.map((s) => s._id || s) || []);
         setPreviewGradient(getAlbumGradient(albumToEdit._id));
       } else {
         setTitle('');
         setDescription('');
         setCoverUrl('');
+        setReleaseYear(new Date().getFullYear());
         setSelectedSongs([]);
         setPreviewGradient(getRandomAlbumGradient());
       }
@@ -1955,6 +2179,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
           title: title.trim(),
           description: description.trim(),
           coverUrl: coverUrl.trim(),
+          releaseYear,
           songIds: selectedSongs,
         }),
       });
@@ -2019,6 +2244,15 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
               placeholder="URL PORTADA (OPCIONAL)"
               value={coverUrl}
               onChange={(e) => setCoverUrl(e.target.value)}
+              className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
+            />
+            <input
+              type="number"
+              min="1900"
+              max="3000"
+              placeholder="AÑO DE LANZAMIENTO"
+              value={releaseYear}
+              onChange={(e) => setReleaseYear(Number(e.target.value) || new Date().getFullYear())}
               className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
             />
             <button

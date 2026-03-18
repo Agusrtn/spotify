@@ -318,6 +318,25 @@ app.get('/all-songs', async (req, res) => {
   }
 });
 
+app.post('/songs/:songId/play', async (req, res) => {
+  try {
+    const { songId } = req.params;
+    const song = await Song.findById(songId);
+    if (!song) {
+      return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+
+    song.playCount = Number(song.playCount || 0) + 1;
+    song.lastPlayedAt = new Date();
+    await song.save();
+
+    return res.json({ ok: true, songId: song._id, playCount: song.playCount });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al registrar reproducción' });
+  }
+});
+
 app.get('/playlists', async (req, res) => {
   try {
     const playlists = await Playlist.find({ isPublic: true })
@@ -492,30 +511,39 @@ app.delete('/songs/:songId', async (req, res) => {
 app.get('/search-all', async (req, res) => {
   try {
     const query = (req.query.query || '').trim();
+    const type = (req.query.type || 'all').trim();
+    const sort = (req.query.sort || 'recent').trim();
     if (!query) {
       return res.json({ artists: [], songs: [], albums: [] });
     }
 
-    const artists = await User.find({
-      username: { $regex: query, $options: 'i' },
-    })
-      .select('_id username role bio profilePic')
-      .limit(12);
+    const songSort = sort === 'popular' ? { playCount: -1, createdAt: -1 } : { createdAt: -1 };
+    const artists = type === 'all' || type === 'artists'
+      ? await User.find({
+        username: { $regex: query, $options: 'i' },
+      })
+        .select('_id username role bio profilePic')
+        .limit(12)
+      : [];
 
-    const songs = await Song.find({
-      title: { $regex: query, $options: 'i' },
-    })
-      .populate('artist', 'username _id profilePic bio')
-      .sort({ createdAt: -1 })
-      .limit(20);
+    const songs = type === 'all' || type === 'songs'
+      ? await Song.find({
+        title: { $regex: query, $options: 'i' },
+      })
+        .populate('artist', 'username _id profilePic bio')
+        .sort(songSort)
+        .limit(20)
+      : [];
 
-    const albums = await Album.find({
-      title: { $regex: query, $options: 'i' },
-    })
-      .populate('artist', 'username _id profilePic bio')
-      .populate('songs', 'title artist coverUrl audioUrl')
-      .sort({ releaseDate: -1 })
-      .limit(20);
+    const albums = type === 'all' || type === 'albums'
+      ? await Album.find({
+        title: { $regex: query, $options: 'i' },
+      })
+        .populate('artist', 'username _id profilePic bio')
+        .populate('songs', 'title artist coverUrl audioUrl')
+        .sort({ releaseDate: -1 })
+        .limit(20)
+      : [];
 
     return res.json({ artists, songs, albums });
   } catch (error) {
@@ -546,6 +574,62 @@ app.get('/artists/:artistId', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener perfil del artista' });
+  }
+});
+
+app.get('/artists/:artistId/stats', async (req, res) => {
+  try {
+    const { artistId } = req.params;
+    const artist = await User.findById(artistId).select('_id username role');
+
+    if (!artist) {
+      return res.status(404).json({ error: 'Artista no encontrado' });
+    }
+
+    const songs = await Song.find({ artist: artistId }).select('_id title playCount createdAt');
+    const albumsCount = await Album.countDocuments({ artist: artistId });
+    const totalPlays = songs.reduce((acc, song) => acc + Number(song.playCount || 0), 0);
+    const topSongs = [...songs]
+      .sort((a, b) => Number(b.playCount || 0) - Number(a.playCount || 0))
+      .slice(0, 5);
+
+    return res.json({
+      artist: { _id: artist._id, username: artist.username },
+      totals: {
+        songs: songs.length,
+        albums: albumsCount,
+        plays: totalPlays,
+      },
+      topSongs,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener estadísticas del artista' });
+  }
+});
+
+app.get('/admin/top-songs', async (req, res) => {
+  try {
+    const requesterId = req.query.requesterId;
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    if (!requesterId) {
+      return res.status(400).json({ error: 'Falta requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden ver el ranking' });
+    }
+
+    const topSongs = await Song.find()
+      .populate('artist', 'username _id profilePic')
+      .sort({ playCount: -1, createdAt: -1 })
+      .limit(limit);
+
+    return res.json({ songs: topSongs });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener top de canciones' });
   }
 });
 
@@ -720,6 +804,7 @@ app.delete('/admin/users/:userId', async (req, res) => {
       await Song.deleteMany({ _id: { $in: songIds } });
     }
 
+    await Album.deleteMany({ artist: userId });
     await Playlist.deleteMany({ creator: userId });
     await User.findByIdAndDelete(userId);
 
@@ -766,7 +851,7 @@ app.get('/albums/artist/:artistId', async (req, res) => {
 // CREATE album (artist)
 app.post('/albums', async (req, res) => {
   try {
-    const { title, description, coverUrl, userId } = req.body;
+    const { title, description, coverUrl, releaseYear, userId } = req.body;
 
     if (!title || !userId) {
       return res.status(400).json({ error: 'Título y userId son requeridos' });
@@ -785,6 +870,7 @@ app.post('/albums', async (req, res) => {
       title,
       description: description || '',
       coverUrl: coverUrl || '',
+      releaseYear: Number(releaseYear) || new Date().getFullYear(),
       artist: userId,
       songs: [],
     });
@@ -803,7 +889,7 @@ app.post('/albums', async (req, res) => {
 app.put('/albums/:albumId', async (req, res) => {
   try {
     const { albumId } = req.params;
-    const { title, description, coverUrl, songIds, userId } = req.body;
+    const { title, description, coverUrl, songIds, releaseYear, userId } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'userId es requerido' });
@@ -826,6 +912,7 @@ app.put('/albums/:albumId', async (req, res) => {
     if (title) album.title = title;
     if (description !== undefined) album.description = description;
     if (coverUrl !== undefined) album.coverUrl = coverUrl;
+    if (releaseYear !== undefined) album.releaseYear = Number(releaseYear) || album.releaseYear;
     if (Array.isArray(songIds)) album.songs = songIds;
 
     await album.save();

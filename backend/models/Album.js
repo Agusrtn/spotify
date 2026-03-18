@@ -30,6 +30,12 @@ const albumSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    releaseYear: {
+      type: Number,
+      min: 1900,
+      max: 3000,
+      default: () => new Date().getFullYear(),
+    },
   },
   { timestamps: true }
 );
