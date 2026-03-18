@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, Disc, ShieldAlert, Upload } from 'lucide-react';
+import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload } from 'lucide-react';
 
 const Layout = ({ 
   children, 
