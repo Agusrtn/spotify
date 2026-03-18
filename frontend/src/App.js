@@ -82,6 +82,7 @@ function App() {
   const [mySongs, setMySongs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false);
+  const [activeArtistTab, setActiveArtistTab] = useState('info');
 
   const [allSongs, setAllSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
@@ -264,6 +265,7 @@ function App() {
       const data = await res.json();
       if (!res.ok) return alert(data.error || 'No se pudo abrir el perfil del artista');
       setArtistProfile(data);
+      setActiveArtistTab('info');
       setView('artist');
     } catch (err) {
       console.error(err);
@@ -1016,72 +1018,117 @@ function App() {
             </div>
           </div>
 
-          <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
-            <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia</p>
-            <p className="text-lg text-gray-300">{artistProfile.artist.bio || 'Este artista no tiene bio aun.'}</p>
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-white/10 overflow-x-auto">
+            <button
+              onClick={() => setActiveArtistTab('info')}
+              className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                activeArtistTab === 'info'
+                  ? 'text-yellow-400 border-b-2 border-yellow-400'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Info
+            </button>
+            <button
+              onClick={() => setActiveArtistTab('canciones')}
+              className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                activeArtistTab === 'canciones'
+                  ? 'text-yellow-400 border-b-2 border-yellow-400'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Canciones
+            </button>
+            <button
+              onClick={() => setActiveArtistTab('albumes')}
+              className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                activeArtistTab === 'albumes'
+                  ? 'text-yellow-400 border-b-2 border-yellow-400'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Álbumes
+            </button>
+            {String(user._id) === String(artistProfile.artist._id) && (user.role === 'artist' || user.role === 'admin') && (
+              <button
+                onClick={() => setIsAlbumModalOpen(true)}
+                className="ml-auto px-4 md:px-6 py-3 text-yellow-400 text-xl font-black hover:bg-yellow-400/10 rounded-xl transition-all"
+                title="Crear nuevo álbum"
+              >
+                +
+              </button>
+            )}
           </div>
 
-          <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
-            <p className="text-xs font-black text-gray-500 uppercase mb-6 tracking-widest">Canciones del Artista</p>
-            <div className="space-y-3">
-              {artistProfile.songs?.length > 0 ? (
-                artistProfile.songs.map((song) => {
-                  const idx = allSongs.findIndex((item) => item._id === song._id);
-                  return (
-                    <SongRow
-                      key={song._id}
-                      song={song}
-                      onRowClick={() => openSongDetail(song)}
-                      onPlay={(e) => {
-                        e.stopPropagation();
-                        playSong(song, idx >= 0 ? idx : 0);
-                      }}
-                      onArtistClick={(e) => {
-                        e.stopPropagation();
-                        if (song.artist?._id) openArtistProfile(song.artist._id);
-                      }}
-                    />
-                  );
-                })
-              ) : (
-                <p className="text-gray-500 text-sm">Este artista no tiene canciones publicadas.</p>
-              )}
+          {/* Tab Content */}
+          {activeArtistTab === 'info' && (
+            <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+              <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia</p>
+              <p className="text-lg text-gray-300">{artistProfile.artist.bio || 'Este artista no tiene bio aun.'}</p>
             </div>
-          </div>
+          )}
 
-          <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
-            <div className="flex items-center justify-between mb-6">
-              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Álbumes del Artista</p>
-              {String(user._id) === String(artistProfile.artist._id) && (user.role === 'artist' || user.role === 'admin') && (
-                <button onClick={() => setIsAlbumModalOpen(true)} className="text-yellow-400 text-xs font-bold hover:underline flex items-center gap-2"><Plus size={14} /> Nuevo Album</button>
-              )}
+          {activeArtistTab === 'canciones' && (
+            <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+              <p className="text-xs font-black text-gray-500 uppercase mb-6 tracking-widest">Canciones del Artista</p>
+              <div className="space-y-3">
+                {artistProfile.songs?.length > 0 ? (
+                  artistProfile.songs.map((song) => {
+                    const idx = allSongs.findIndex((item) => item._id === song._id);
+                    return (
+                      <SongRow
+                        key={song._id}
+                        song={song}
+                        onRowClick={() => openSongDetail(song)}
+                        onPlay={(e) => {
+                          e.stopPropagation();
+                          playSong(song, idx >= 0 ? idx : 0);
+                        }}
+                        onArtistClick={(e) => {
+                          e.stopPropagation();
+                          if (song.artist?._id) openArtistProfile(song.artist._id);
+                        }}
+                      />
+                    );
+                  })
+                ) : (
+                  <p className="text-gray-500 text-sm">Este artista no tiene canciones publicadas.</p>
+                )}
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {artistProfile.albums?.length > 0 ? (
-                artistProfile.albums.map((album) => (
-                  <button
-                    key={album._id}
-                    onClick={() => setSelectedAlbum(album)}
-                    className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
-                  >
-                    <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center">
-                      {album.coverUrl ? (
-                        <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
-                      ) : (
-                        <Disc size={48} className="text-white/40" />
-                      )}
-                    </div>
-                    <div className="p-4 bg-black/40 backdrop-blur-sm">
-                      <p className="font-black text-lg leading-tight mb-1 text-white">{album.title}</p>
-                      <p className="text-white/50 text-xs">{album.songs?.length || 0} canciones</p>
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <p className="text-gray-500 text-sm">Este artista no tiene álbumes.</p>
-              )}
+          )}
+
+          {activeArtistTab === 'albumes' && (
+            <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+              <p className="text-xs font-black text-gray-500 uppercase mb-6 tracking-widest">Álbumes del Artista</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {artistProfile.albums?.length > 0 ? (
+                  artistProfile.albums.map((album) => (
+                    <button
+                      key={album._id}
+                      onClick={() => setSelectedAlbum(album)}
+                      className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                    >
+                      <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center">
+                        {album.coverUrl ? (
+                          <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <Disc size={48} className="text-white/40" />
+                        )}
+                      </div>
+                      <div className="p-4 bg-black/40 backdrop-blur-sm">
+                        <p className="font-black text-lg leading-tight mb-1 text-white">{album.title}</p>
+                        <p className="text-white/50 text-xs">{album.songs?.length || 0} canciones</p>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-sm">Este artista no tiene álbumes.</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
