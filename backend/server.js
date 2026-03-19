@@ -269,6 +269,8 @@ app.post('/login', async (req, res) => {
         username: user.username,
         role: user.role,
         bio: user.bio,
+        instagramHandle: user.instagramHandle,
+        instagramPosts: user.instagramPosts || [],
         profilePic: user.profilePic,
       },
     });
@@ -822,7 +824,7 @@ app.get('/search-all', async (req, res) => {
 app.get('/artists/:artistId', async (req, res) => {
   try {
     const { artistId } = req.params;
-    const artist = await User.findById(artistId).select('_id username role bio profilePic');
+    const artist = await User.findById(artistId).select('_id username role bio profilePic instagramHandle instagramPosts');
 
     if (!artist) {
       return res.status(404).json({ error: 'Artista no encontrado' });
@@ -912,7 +914,7 @@ app.put('/users/:userId/profile', (req, res) => {
 
     try {
       const { userId } = req.params;
-      const { bio } = req.body;
+      const { bio, instagramHandle, instagramPosts } = req.body;
 
       const user = await User.findById(userId);
       if (!user) {
@@ -921,6 +923,18 @@ app.put('/users/:userId/profile', (req, res) => {
 
       if (typeof bio === 'string') {
         user.bio = bio;
+      }
+
+      if (typeof instagramHandle === 'string') {
+        user.instagramHandle = instagramHandle.trim().replace(/^@+/, '');
+      }
+
+      if (typeof instagramPosts === 'string') {
+        user.instagramPosts = instagramPosts
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .slice(0, 3);
       }
 
       if (req.file?.path) {
@@ -936,6 +950,8 @@ app.put('/users/:userId/profile', (req, res) => {
           username: user.username,
           role: user.role,
           bio: user.bio,
+          instagramHandle: user.instagramHandle,
+          instagramPosts: user.instagramPosts || [],
           profilePic: user.profilePic,
         },
       });

@@ -16,6 +16,14 @@ const UserSchema = new mongoose.Schema({
         type: String, 
         default: '¡Bienvenido a mi perfil de RTN!' 
     },
+    instagramHandle: {
+        type: String,
+        default: ''
+    },
+    instagramPosts: [{
+        type: String,
+        default: ''
+    }],
     profilePic: { 
         type: String, 
         default: '' // Aquí guardaremos la URL de la imagen de Cloudinary

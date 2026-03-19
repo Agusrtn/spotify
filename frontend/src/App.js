@@ -123,6 +123,8 @@ function App() {
   const [songToAddPlaylist, setSongToAddPlaylist] = useState(null);
 
   const [settingsBio, setSettingsBio] = useState('');
+  const [settingsInstagramHandle, setSettingsInstagramHandle] = useState('');
+  const [settingsInstagramPosts, setSettingsInstagramPosts] = useState(['', '', '']);
   const [settingsPic, setSettingsPic] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [members, setMembers] = useState([]);
@@ -1055,6 +1057,8 @@ function App() {
     try {
       const formData = new FormData();
       formData.append('bio', settingsBio || '');
+      formData.append('instagramHandle', settingsInstagramHandle || '');
+      formData.append('instagramPosts', settingsInstagramPosts.filter(Boolean).join('\n'));
       if (settingsPic) formData.append('profilePic', settingsPic);
 
       const res = await fetch(`${API_URL}/users/${user._id}/profile`, {
@@ -1878,6 +1882,57 @@ function App() {
             <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
               <p className="text-xs font-black text-gray-500 uppercase mb-4 tracking-widest">Biografia</p>
               <p className="text-lg text-gray-300">{artistProfile.artist.bio || 'Este artista no tiene bio aun.'}</p>
+              {(artistProfile.artist.instagramHandle || artistProfile.artist.instagramPosts?.filter(Boolean).length) ? (
+                <div className="mt-6 bg-black/30 border border-white/10 rounded-2xl p-4">
+                  <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+                    <div>
+                      <p className="text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">Instagram</p>
+                      {artistProfile.artist.instagramHandle ? (
+                        <a
+                          href={`https://www.instagram.com/${artistProfile.artist.instagramHandle}/`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-lg font-black text-pink-300 hover:text-pink-200"
+                        >
+                          @{artistProfile.artist.instagramHandle}
+                        </a>
+                      ) : (
+                        <p className="text-sm text-gray-500">Sin usuario vinculado</p>
+                      )}
+                    </div>
+                    {artistProfile.artist.instagramHandle ? (
+                      <a
+                        href={`https://www.instagram.com/${artistProfile.artist.instagramHandle}/`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+                      >
+                        Ver perfil IG
+                      </a>
+                    ) : null}
+                  </div>
+
+                  {artistProfile.artist.instagramPosts?.filter(Boolean).length ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {artistProfile.artist.instagramPosts.filter(Boolean).map((postUrl, index) => (
+                        <a
+                          key={`${postUrl}-${index}`}
+                          href={postUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-2xl border border-pink-400/20 bg-gradient-to-br from-pink-500/20 via-orange-400/10 to-black/30 p-4 hover:border-pink-300/40 hover:bg-white/10 transition-all"
+                        >
+                          <p className="text-[10px] uppercase tracking-[0.25em] text-pink-200 font-black mb-2">Instagram Post</p>
+                          <p className="font-black text-lg">Publicación {index + 1}</p>
+                          <p className="text-sm text-gray-300 mt-2 break-all line-clamp-3">{postUrl}</p>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">Este artista todavía no añadió publicaciones de Instagram.</p>
+                  )}
+                </div>
+              ) : null}
               {artistStats && (
                 <>
                   <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2337,6 +2392,36 @@ function App() {
                 placeholder="Describe tu estilo, tu crew y lo que haces..."
               />
             </div>
+
+            {(user.role === 'artist' || user.role === 'admin') && (
+              <>
+                <div>
+                  <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Instagram vinculado</p>
+                  <input
+                    value={settingsInstagramHandle}
+                    onChange={(e) => setSettingsInstagramHandle(e.target.value.replace(/^@+/, ''))}
+                    className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
+                    placeholder="usuario_de_instagram"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Publicaciones recientes de Instagram</p>
+                  <div className="space-y-3">
+                    {settingsInstagramPosts.map((post, index) => (
+                      <input
+                        key={index}
+                        value={post}
+                        onChange={(e) => setSettingsInstagramPosts((prev) => prev.map((item, idx) => idx === index ? e.target.value : item))}
+                        className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
+                        placeholder={`Link del post de Instagram ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">Sin API oficial de Meta no puedo sacar las publicaciones automáticamente, así que aquí puedes pegar hasta 3 links recientes y se mostrarán en Mi Crew.</p>
+                </div>
+              </>
+            )}
 
             <div className="flex gap-3">
               <button disabled={settingsLoading} className="flex-1 bg-yellow-400 text-black font-black py-3 px-8 rounded-2xl uppercase tracking-widest text-xs disabled:opacity-60">
