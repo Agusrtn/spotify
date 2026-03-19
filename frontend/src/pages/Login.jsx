@@ -5,16 +5,12 @@ const Login = ({ onLogin }) => {
   const [id, setId] = useState('');
   const [pass, setPass] = useState('');
   const [isRegistering, setIsRegistering] = useState(false); // Modo registro
-  const [isAdminRegister, setIsAdminRegister] = useState(false);
-  const [adminCode, setAdminCode] = useState('');
 
   const handleAuth = async (e) => {
     e.preventDefault();
     
     // Si estamos registrando, vamos a /register; si no, a /login
-    const endpoint = isRegistering
-      ? (isAdminRegister ? "/register-admin" : "/register")
-      : "/login";
+    const endpoint = isRegistering ? "/register" : "/login";
     
     try {
       const response = await fetch(`${API_URL}${endpoint}`, {
@@ -23,7 +19,6 @@ const Login = ({ onLogin }) => {
         body: JSON.stringify({ 
           username: id, 
           password: pass,
-          adminCode: isRegistering && isAdminRegister ? adminCode : undefined,
         })
       });
 
@@ -33,8 +28,6 @@ const Login = ({ onLogin }) => {
         if (isRegistering) {
           alert("✅ ¡Registro exitoso! Ahora puedes entrar con tus credenciales.");
           setIsRegistering(false); // Volvemos al modo login
-          setIsAdminRegister(false);
-          setAdminCode('');
         } else {
           onLogin(data.user, data.token); // Iniciamos sesión y persistimos token
         }
@@ -65,7 +58,7 @@ const Login = ({ onLogin }) => {
             JOIN THE <span className="text-yellow-400">CREW</span>
           </h1>
           <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-3">
-            {isRegistering ? (isAdminRegister ? 'Crear cuenta de Administrador' : 'Registro de Usuario') : 'Vibe Check 2026'}
+            {isRegistering ? 'Registro de Usuario' : 'Vibe Check 2026'}
           </p>
         </div>
 
@@ -92,30 +85,6 @@ const Login = ({ onLogin }) => {
             />
           </div>
 
-          {isRegistering && isAdminRegister && (
-            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-              <label className="text-[10px] text-gray-500 font-black uppercase ml-4 mb-2 block">Código Admin</label>
-              <input
-                type="password"
-                placeholder="Código secreto de administrador"
-                className="w-full bg-black/50 border border-white/10 p-4 rounded-2xl text-white focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 outline-none transition-all placeholder:text-gray-700"
-                onChange={(e) => setAdminCode(e.target.value)}
-                value={adminCode}
-                required
-              />
-            </div>
-          )}
-
-          {isRegistering && (
-            <label className="flex items-center gap-2 text-xs text-gray-400 font-semibold">
-              <input
-                type="checkbox"
-                checked={isAdminRegister}
-                onChange={(e) => setIsAdminRegister(e.target.checked)}
-              />
-              Crear como cuenta admin
-            </label>
-          )}
         </div>
 
         <button 
@@ -131,8 +100,6 @@ const Login = ({ onLogin }) => {
             type="button"
             onClick={() => {
               setIsRegistering(!isRegistering);
-              setIsAdminRegister(false);
-              setAdminCode('');
             }}
             className="text-yellow-400 ml-1 font-black uppercase hover:underline"
           >
@@ -140,7 +107,7 @@ const Login = ({ onLogin }) => {
           </button>
         </p>
 
-        {isRegistering && !isAdminRegister && (
+        {isRegistering && (
           <p className="text-center text-gray-500 text-[10px] mt-3 font-medium uppercase tracking-wide">
             El registro normal crea cuentas con rol USER por defecto.
           </p>
