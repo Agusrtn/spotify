@@ -27,6 +27,87 @@ const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || '';
 const IG_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || '';
 const IG_SCOPES = 'user_profile,user_media';
 const IG_SYNC_INTERVAL_MS = Number(process.env.IG_SYNC_INTERVAL_MS || 5 * 60 * 1000);
+const FRONTEND_APP_URL = (process.env.FRONTEND_APP_URL || '').replace(/\/$/, '');
+
+const escapeHtml = (value = '') => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const getRequestOrigin = (req) => {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const proto = forwardedProto || req.protocol || 'https';
+  const host = req.get('host');
+  return `${proto}://${host}`;
+};
+
+const toAbsoluteUrl = (req, rawUrl = '') => {
+  const value = String(rawUrl || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  const origin = getRequestOrigin(req);
+  if (value.startsWith('/')) return `${origin}${value}`;
+  return `${origin}/${value}`;
+};
+
+const resolveAppBaseUrl = (req) => {
+  const candidate = String(req.query.app || '').trim().replace(/\/$/, '');
+  if (/^https?:\/\//i.test(candidate)) return candidate;
+  if (candidate.startsWith('http://localhost') || candidate.startsWith('https://localhost')) return candidate;
+  if (FRONTEND_APP_URL) return FRONTEND_APP_URL;
+  return '';
+};
+
+const renderSharePreviewHtml = ({ title, description, imageUrl, canonicalUrl, redirectUrl, ogType = 'website' }) => {
+  const safeTitle = escapeHtml(title || 'RTN Music');
+  const safeDescription = escapeHtml(description || 'Escucha este contenido en RTN Music');
+  const safeImage = escapeHtml(imageUrl || '');
+  const safeCanonical = escapeHtml(canonicalUrl || '');
+  const safeRedirect = escapeHtml(redirectUrl || '');
+
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeTitle}</title>
+    <meta name="description" content="${safeDescription}" />
+    <meta property="og:site_name" content="RTN Music" />
+    <meta property="og:type" content="${escapeHtml(ogType)}" />
+    <meta property="og:title" content="${safeTitle}" />
+    <meta property="og:description" content="${safeDescription}" />
+    <meta property="og:url" content="${safeCanonical}" />
+    ${safeImage ? `<meta property="og:image" content="${safeImage}" />` : ''}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${safeTitle}" />
+    <meta name="twitter:description" content="${safeDescription}" />
+    ${safeImage ? `<meta name="twitter:image" content="${safeImage}" />` : ''}
+    ${safeRedirect ? `<meta http-equiv="refresh" content="0;url=${safeRedirect}" />` : ''}
+    <style>
+      body { margin: 0; background: #080808; color: #fff; font-family: Segoe UI, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; }
+      .card { width: min(92vw, 480px); border: 1px solid #222; border-radius: 18px; overflow: hidden; background: #111; }
+      .cover { aspect-ratio: 1.8 / 1; background: #222 center/cover no-repeat; }
+      .content { padding: 16px; }
+      .title { font-size: 20px; font-weight: 800; margin: 0 0 8px; }
+      .desc { color: #aaa; margin: 0 0 14px; }
+      .btn { display: inline-block; text-decoration: none; color: #080808; background: #facc15; font-weight: 700; padding: 10px 14px; border-radius: 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="cover" style="background-image: url('${safeImage}');"></div>
+      <div class="content">
+        <p class="title">${safeTitle}</p>
+        <p class="desc">${safeDescription}</p>
+        ${safeRedirect ? `<a class="btn" href="${safeRedirect}">Abrir en RTN Music</a>` : ''}
+      </div>
+    </div>
+    ${safeRedirect ? `<script>window.location.replace(${JSON.stringify(redirectUrl)});</script>` : ''}
+  </body>
+</html>`;
+};
 
 const shouldSyncInstagram = (userDoc, maxAgeMs = 5 * 60 * 1000) => {
   if (!userDoc?.instagramLinked || !userDoc?.instagramAccessToken) return false;
@@ -141,6 +222,89 @@ const runInstagramAutoSync = async () => {
     console.error('Instagram auto-sync error:', error.message);
   }
 };
+
+app.get('/share/:type/:id', async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    const appBaseUrl = resolveAppBaseUrl(req);
+    const canonicalUrl = `${getRequestOrigin(req)}${req.originalUrl}`;
+
+    if (type === 'song') {
+      const song = await Song.findById(id)
+        .populate('artist', 'username _id')
+        .populate('collaborators.userId', 'username _id');
+      if (!song) {
+        return res.status(404).send('Cancion no encontrada');
+      }
+
+      const collaborators = (song.collaborators || [])
+        .map((collaborator) => collaborator?.userId?.username || collaborator?.name)
+        .filter(Boolean)
+        .slice(0, 4);
+
+      const artistLabel = song.artist?.username || 'Artista';
+      const contributors = collaborators.length ? `${artistLabel}, ${collaborators.join(', ')}` : artistLabel;
+      const redirectUrl = appBaseUrl ? `${appBaseUrl}?song=${song._id}` : '';
+      const html = renderSharePreviewHtml({
+        title: `${song.title} - RTN Music`,
+        description: `Por ${contributors}`,
+        imageUrl: toAbsoluteUrl(req, song.coverUrl),
+        canonicalUrl,
+        redirectUrl,
+        ogType: 'music.song',
+      });
+
+      return res.status(200).type('html').send(html);
+    }
+
+    if (type === 'album') {
+      const album = await Album.findById(id)
+        .populate('artist', 'username _id')
+        .populate('songs', 'title coverUrl');
+      if (!album) {
+        return res.status(404).send('Album no encontrado');
+      }
+
+      const redirectUrl = appBaseUrl ? `${appBaseUrl}?album=${album._id}` : '';
+      const html = renderSharePreviewHtml({
+        title: `${album.title} - Album en RTN Music`,
+        description: `${album.artist?.username || 'Artista'} • ${album.songs?.length || 0} canciones`,
+        imageUrl: toAbsoluteUrl(req, album.coverUrl || album.songs?.[0]?.coverUrl),
+        canonicalUrl,
+        redirectUrl,
+        ogType: 'music.album',
+      });
+
+      return res.status(200).type('html').send(html);
+    }
+
+    if (type === 'playlist') {
+      const playlist = await Playlist.findById(id)
+        .populate('creator', 'username _id')
+        .populate({ path: 'songs', select: 'coverUrl title' });
+      if (!playlist) {
+        return res.status(404).send('Playlist no encontrada');
+      }
+
+      const redirectUrl = appBaseUrl ? `${appBaseUrl}?playlist=${playlist._id}` : '';
+      const html = renderSharePreviewHtml({
+        title: `${playlist.name} - Playlist en RTN Music`,
+        description: `${playlist.creator?.username || 'RTN Music'} • ${playlist.songs?.length || 0} canciones`,
+        imageUrl: toAbsoluteUrl(req, playlist.coverUrl || playlist.songs?.[0]?.coverUrl),
+        canonicalUrl,
+        redirectUrl,
+        ogType: 'music.playlist',
+      });
+
+      return res.status(200).type('html').send(html);
+    }
+
+    return res.status(400).send('Tipo de contenido no soportado');
+  } catch (error) {
+    console.error(error);
+    return res.status(500).send('Error al generar vista previa de enlace');
+  }
+});
 
 const orderByIds = (items, orderedIds) => {
   const byId = new Map(items.map((item) => [String(item._id), item]));

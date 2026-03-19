@@ -694,7 +694,7 @@ function App() {
 
   const shareLink = async (type, itemId, label) => {
     try {
-      const url = `${window.location.origin}?${type}=${itemId}`;
+      const url = `${API_URL}/share/${type}/${itemId}?app=${encodeURIComponent(window.location.origin)}`;
       if (navigator.share) {
         await navigator.share({ title: `RTN Music - ${label}`, text: `Te comparto ${label}`, url });
         showToast(`Compartiste ${label}`, 'success');
@@ -730,11 +730,12 @@ function App() {
 
   useEffect(() => {
     if (deepLinkHandledRef.current) return;
-    if (!allSongs.length && !albums.length) return;
+    if (!allSongs.length && !albums.length && !playlists.length && !userPlaylists.length) return;
 
     const params = new URLSearchParams(window.location.search);
     const songId = params.get('song');
     const albumId = params.get('album');
+    const playlistId = params.get('playlist');
     const artistId = params.get('artist');
 
     if (songId) {
@@ -755,17 +756,27 @@ function App() {
       }
     }
 
-    if (artistId && !songId && !albumId) {
+    if (playlistId) {
+      const allAvailablePlaylists = [...(playlists || []), ...(userPlaylists || [])];
+      const playlist = allAvailablePlaylists.find((item) => String(item._id) === String(playlistId));
+      if (playlist) {
+        setSelectedPlaylist(playlist);
+        setView('inicio');
+        showToast('Abriendo playlist compartida', 'success');
+      }
+    }
+
+    if (artistId && !songId && !albumId && !playlistId) {
       openArtistProfile(artistId);
       showToast('Abriendo artista compartido', 'success');
     }
 
-    if (songId || albumId || artistId) {
+    if (songId || albumId || playlistId || artistId) {
       deepLinkHandledRef.current = true;
       const cleanUrl = `${window.location.origin}${window.location.pathname}`;
       window.history.replaceState({}, '', cleanUrl);
     }
-  }, [allSongs, albums]);
+  }, [allSongs, albums, playlists, userPlaylists]);
 
   useEffect(() => {
     if (!user?._id) return;
