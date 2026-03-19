@@ -125,6 +125,8 @@ function App() {
   const [homeVisibleCards, setHomeVisibleCards] = useState(3);
   const [featuredCarouselIndex, setFeaturedCarouselIndex] = useState(0);
   const [albumsCarouselIndex, setAlbumsCarouselIndex] = useState(0);
+  const [artistsCarouselIndex, setArtistsCarouselIndex] = useState(0);
+  const [crewSongsPage, setCrewSongsPage] = useState(0);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [, setCurrentIndex] = useState(0);
@@ -185,6 +187,25 @@ function App() {
   );
   const maxFeaturedIndex = Math.max(0, featuredPlaylists.length - homeVisibleCards);
   const maxAlbumsIndex = Math.max(0, albums.length - homeVisibleCards);
+  const allArtistsForHome = useMemo(() => {
+    const map = new Map();
+    allSongs.forEach((song) => {
+      const artist = song?.artist;
+      if (artist?._id && !map.has(String(artist._id))) {
+        map.set(String(artist._id), artist);
+      }
+    });
+    albums.forEach((album) => {
+      const artist = album?.artist;
+      if (artist?._id && !map.has(String(artist._id))) {
+        map.set(String(artist._id), artist);
+      }
+    });
+    return Array.from(map.values());
+  }, [allSongs, albums]);
+  const maxArtistsIndex = Math.max(0, allArtistsForHome.length - homeVisibleCards);
+  const crewSongsPageSize = 9;
+  const maxCrewSongsPage = Math.max(0, Math.ceil(allSongs.length / crewSongsPageSize) - 1);
   const visibleFeaturedPlaylists = useMemo(
     () => featuredPlaylists.slice(featuredCarouselIndex, featuredCarouselIndex + homeVisibleCards),
     [featuredPlaylists, featuredCarouselIndex, homeVisibleCards]
@@ -192,6 +213,14 @@ function App() {
   const visibleAlbums = useMemo(
     () => albums.slice(albumsCarouselIndex, albumsCarouselIndex + homeVisibleCards),
     [albums, albumsCarouselIndex, homeVisibleCards]
+  );
+  const visibleArtistsForHome = useMemo(
+    () => allArtistsForHome.slice(artistsCarouselIndex, artistsCarouselIndex + homeVisibleCards),
+    [allArtistsForHome, artistsCarouselIndex, homeVisibleCards]
+  );
+  const visibleCrewSongs = useMemo(
+    () => allSongs.slice(crewSongsPage * crewSongsPageSize, (crewSongsPage + 1) * crewSongsPageSize),
+    [allSongs, crewSongsPage]
   );
 
   const showToast = (message, type = 'info') => {
@@ -785,6 +814,14 @@ function App() {
   useEffect(() => {
     setAlbumsCarouselIndex((prev) => Math.min(prev, maxAlbumsIndex));
   }, [maxAlbumsIndex]);
+
+  useEffect(() => {
+    setArtistsCarouselIndex((prev) => Math.min(prev, maxArtistsIndex));
+  }, [maxArtistsIndex]);
+
+  useEffect(() => {
+    setCrewSongsPage((prev) => Math.min(prev, maxCrewSongsPage));
+  }, [maxCrewSongsPage]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -2125,18 +2162,102 @@ function App() {
             )}
           </section>
 
+          <section className="mb-10 md:mb-14">
+            <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
+              <h3 className="text-xl md:text-3xl font-black tracking-tight">Artistas</h3>
+              {allArtistsForHome.length > homeVisibleCards ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setArtistsCarouselIndex((prev) => Math.max(0, prev - 1))}
+                    disabled={artistsCarouselIndex === 0}
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Anterior artistas"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setArtistsCarouselIndex((prev) => Math.min(maxArtistsIndex, prev + 1))}
+                    disabled={artistsCarouselIndex >= maxArtistsIndex}
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Siguiente artistas"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs md:text-sm text-gray-400 font-bold">{allArtistsForHome.length} visibles</span>
+              )}
+            </div>
+
+            {allArtistsForHome.length > 0 ? (
+              <div className="grid gap-4 md:gap-6" style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}>
+                {visibleArtistsForHome.map((artist) => (
+                  <button
+                    key={artist._id}
+                    onClick={() => openArtistProfile(artist._id)}
+                    className="text-left bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-4 hover:bg-white/10 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 h-14 rounded-xl overflow-hidden bg-yellow-400/20 flex-shrink-0 flex items-center justify-center">
+                        {artist.profilePic ? (
+                          <img src={artist.profilePic} alt={artist.username} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-yellow-300 text-lg font-black">{artist.username?.charAt(0)?.toUpperCase() || '?'}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-black text-lg truncate">{artist.username || 'Artista'}</p>
+                        <p className="text-[10px] text-yellow-300 uppercase font-bold tracking-widest">{artist.role || 'artist'}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No hay artistas aún.</p>
+            )}
+          </section>
+
           <section className="mt-12">
-            <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-6">Novedades en la Crew</h3>
+            <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em]">Novedades en la Crew</h3>
+              {allSongs.length > crewSongsPageSize ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCrewSongsPage((prev) => Math.max(0, prev - 1))}
+                    disabled={crewSongsPage === 0}
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Página anterior novedades"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCrewSongsPage((prev) => Math.min(maxCrewSongsPage, prev + 1))}
+                    disabled={crewSongsPage >= maxCrewSongsPage}
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Página siguiente novedades"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <div className="space-y-4">
-              {allSongs.length > 0 ? (
-                allSongs.map((song, idx) => (
+              {visibleCrewSongs.length > 0 ? (
+                visibleCrewSongs.map((song) => {
+                  const idx = allSongs.findIndex((item) => String(item._id) === String(song._id));
+                  return (
                   <SongRow
                     key={song._id}
                     song={song}
                     onRowClick={() => openSongDetail(song)}
                     onPlay={(e) => {
                       e.stopPropagation();
-                      playSong(song, idx);
+                      playSong(song, idx >= 0 ? idx : 0);
                     }}
                     onArtistClick={(e) => {
                       e.stopPropagation();
@@ -2146,7 +2267,8 @@ function App() {
                     onToggleLike={(songId) => toggleFavorite('song', songId)}
                     isLiked={likedSongSet.has(String(song._id))}
                   />
-                ))
+                );
+                })
               ) : (
                 <p className="text-gray-500 text-sm">No hay canciones publicadas aun.</p>
               )}
