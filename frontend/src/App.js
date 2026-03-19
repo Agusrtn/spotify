@@ -1383,6 +1383,7 @@ function App() {
                       e.stopPropagation();
                       if (song.artist?._id) openArtistProfile(song.artist._id);
                     }}
+                    onCollaboratorClick={(id) => openArtistProfile(id)}
                   />
                 ))
               ) : (
@@ -1450,6 +1451,7 @@ function App() {
                           e.stopPropagation();
                           if (song.artist?._id) openArtistProfile(song.artist._id);
                         }}
+                        onCollaboratorClick={(id) => openArtistProfile(id)}
                       />
                     );
                   })
@@ -1610,6 +1612,7 @@ function App() {
                           e.stopPropagation();
                           if (song.artist?._id) openArtistProfile(song.artist._id);
                         }}
+                        onCollaboratorClick={(id) => openArtistProfile(id)}
                       />
                     );
                   })
@@ -1859,6 +1862,7 @@ function App() {
                           e.stopPropagation();
                           if (song.artist?._id) openArtistProfile(song.artist._id);
                         }}
+                        onCollaboratorClick={(id) => openArtistProfile(id)}
                       />
                     );
                   })
@@ -2374,7 +2378,7 @@ function App() {
   );
 }
 
-const SongRow = ({ song, onRowClick, onPlay, onArtistClick }) => (
+const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick }) => (
   <div
     className="group flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-3 py-2 hover:bg-white/10 transition-all cursor-pointer"
     onClick={onRowClick}
@@ -2389,15 +2393,35 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick }) => (
       )}
     </div>
 
-    <div className="min-w-0 flex-1">
+    <div className="min-w-0 flex-1 overflow-hidden">
       <h4 className="font-black uppercase italic text-sm truncate">{song.title}</h4>
-      <button
-        type="button"
-        onClick={onArtistClick}
-        className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase truncate hover:text-yellow-300"
-      >
-        {song.artist?.username || 'Anonimo'}
-      </button>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
+        <button
+          type="button"
+          onClick={onArtistClick}
+          className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase hover:text-yellow-300 leading-tight"
+        >
+          {song.artist?.username || 'Anonimo'}<span className="text-white/40 normal-case font-normal tracking-normal"> (Creador)</span>
+        </button>
+        {song.collaborators?.map((c, i) => (
+          <span key={i} className="flex items-center gap-1 leading-tight">
+            <span className="text-white/30 text-[10px]">·</span>
+            {c.userId ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onCollaboratorClick && onCollaboratorClick(c.userId._id || c.userId); }}
+                className="text-[10px] text-yellow-300/80 font-bold tracking-widest uppercase hover:text-yellow-300"
+              >
+                {c.name}<span className="text-white/40 normal-case font-normal tracking-normal"> (Colaborador)</span>
+              </button>
+            ) : (
+              <span className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">
+                {c.name}<span className="text-white/40 normal-case font-normal tracking-normal"> (Colaborador)</span>
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
     </div>
 
     <button
@@ -2449,13 +2473,27 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
           <div className="min-w-0 flex-1">
             <p className="text-white/80 text-xl font-bold">Cancion</p>
             <h2 className="text-3xl md:text-5xl lg:text-8xl font-black leading-none uppercase tracking-tight break-words">{title || song.title}</h2>
-            <button
-              type="button"
-              onClick={() => song.artist?._id && onOpenArtist(song.artist._id)}
-              className="mt-4 text-white/80 font-semibold hover:text-yellow-300"
-            >
-              {song.artist?.username || 'Artista'} - {new Date(song.createdAt).getFullYear() || '2026'}
-            </button>
+            <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <button
+                type="button"
+                onClick={() => song.artist?._id && onOpenArtist(song.artist._id)}
+                className="text-white/80 font-semibold hover:text-yellow-300"
+              >
+                {song.artist?.username || 'Artista'}<span className="text-white/40 font-normal"> (Creador)</span>
+                {' – '}{new Date(song.createdAt).getFullYear() || '2026'}
+              </button>
+              {song.collaborators?.map((c, i) => (
+                c.userId ? (
+                  <button key={i} type="button" onClick={() => { const id = c.userId._id || c.userId; if (id) onOpenArtist(id); }} className="text-white/70 font-semibold hover:text-yellow-300">
+                    {c.name}<span className="text-white/40 font-normal"> (Colaborador)</span>
+                  </button>
+                ) : (
+                  <span key={i} className="text-white/70 font-semibold">
+                    {c.name}<span className="text-white/40 font-normal"> (Colaborador)</span>
+                  </span>
+                )
+              ))}
+            </div>
           </div>
 
           <button onClick={onClose} className="self-start md:self-auto p-3 rounded-xl bg-black/30 hover:bg-black/50 transition">
@@ -2897,10 +2935,13 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   const [coverFile, setCoverFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [artistId, setArtistId] = useState(userId);
+  const [collaborators, setCollaborators] = useState([]);
+  const collabTimerRef = useRef({});
 
   useEffect(() => {
     if (isOpen) {
       setArtistId(userId);
+      setCollaborators([]);
     }
   }, [isOpen, userId]);
 
@@ -2909,6 +2950,26 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   const artistOptions = user?.role === 'admin'
     ? members.filter((member) => member.role === 'artist' || member.role === 'admin')
     : [];
+
+  const addCollaborator = () => setCollaborators(prev => [...prev, { name: '', userId: null, suggestions: [] }]);
+  const removeCollaborator = (i) => setCollaborators(prev => prev.filter((_, idx) => idx !== i));
+  const handleCollaboratorNameChange = (i, value) => {
+    setCollaborators(prev => prev.map((c, idx) => idx === i ? { ...c, name: value, userId: null, suggestions: [] } : c));
+    if (collabTimerRef.current[i]) clearTimeout(collabTimerRef.current[i]);
+    if (value.length >= 2) {
+      collabTimerRef.current[i] = setTimeout(async () => {
+        try {
+          const res = await fetch(`${API_URL}/search?query=${encodeURIComponent(value)}`);
+          const users = await res.json();
+          setCollaborators(prev => prev.map((c, idx) => idx === i ? { ...c, suggestions: Array.isArray(users) ? users : [] } : c));
+        } catch (_) {}
+      }, 300);
+    }
+  };
+  const selectCollaboratorUser = (i, u) => {
+    if (collabTimerRef.current[i]) clearTimeout(collabTimerRef.current[i]);
+    setCollaborators(prev => prev.map((c, idx) => idx === i ? { ...c, name: u.username, userId: u._id, suggestions: [] } : c));
+  };
 
   const handleUpload = async (e) => {
     e.preventDefault();
@@ -2922,6 +2983,9 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
     formData.append('lyrics', lyrics);
     formData.append('artistId', artistId || userId);
     formData.append('uploaderId', userId);
+    formData.append('collaborators', JSON.stringify(
+      collaborators.filter(c => c.name.trim()).map(c => ({ name: c.name.trim(), userId: c.userId || null }))
+    ));
     formData.append('audio', audioFile);
     formData.append('cover', coverFile);
 
@@ -2945,6 +3009,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
         setAudioFile(null);
         setCoverFile(null);
         setArtistId(userId);
+        setCollaborators([]);
       } else {
         alert(data.error || 'Error al subir el archivo');
       }
@@ -2989,6 +3054,45 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
           <input type="text" placeholder="NOMBRE DEL TRACK" required className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold" onChange={(e) => setTitle(e.target.value)} />
           <textarea placeholder="DESCRIPCION" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20" onChange={(e) => setDesc(e.target.value)} />
           <textarea placeholder="LETRA (OPCIONAL)" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-32" onChange={(e) => setLyrics(e.target.value)} />
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">COLABORADORES</p>
+              <button type="button" onClick={addCollaborator} className="flex items-center gap-1 text-[10px] text-yellow-400 font-bold uppercase tracking-widest hover:text-yellow-300">
+                <Plus size={12} /> Añadir
+              </button>
+            </div>
+            <div className="space-y-2">
+              {collaborators.map((c, i) => (
+                <div key={i} className="relative flex items-start gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={c.name}
+                      placeholder="NOMBRE DEL COLABORADOR"
+                      onChange={(e) => handleCollaboratorNameChange(i, e.target.value)}
+                      className={`w-full bg-black/40 p-3 rounded-xl border ${c.userId ? 'border-yellow-400/60' : 'border-white/5'} outline-none focus:border-yellow-400 text-white text-sm font-bold`}
+                    />
+                    {c.userId && <p className="text-[9px] text-yellow-400/80 mt-0.5 pl-1 font-bold uppercase tracking-widest">✓ Cuenta registrada</p>}
+                    {c.suggestions?.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden z-50 shadow-xl">
+                        {c.suggestions.slice(0, 5).map((u) => (
+                          <button key={u._id} type="button" onClick={() => selectCollaboratorUser(i, u)} className="w-full text-left px-3 py-2 hover:bg-white/10 flex items-center gap-2 text-sm">
+                            {u.profilePic ? <img src={u.profilePic} alt={u.username} className="w-6 h-6 rounded-full object-cover flex-shrink-0" /> : <div className="w-6 h-6 rounded-full bg-yellow-400/20 flex items-center justify-center text-[10px] font-black text-yellow-400 flex-shrink-0">{u.username.charAt(0).toUpperCase()}</div>}
+                            <span className="font-bold">{u.username}</span>
+                            <span className="text-[10px] text-gray-500 ml-auto uppercase">{u.role}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => removeCollaborator(i)} className="p-2 mt-1 text-gray-500 hover:text-red-400 flex-shrink-0">
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="flex gap-4 pt-4">
             <button type="button" onClick={onClose} className="flex-1 text-gray-500 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>

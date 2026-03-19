@@ -10,6 +10,10 @@ const SongSchema = new mongoose.Schema({
   playCount: { type: Number, default: 0 },
   listenSeconds: { type: Number, default: 0 },
   lastPlayedAt: { type: Date },
+  collaborators: [{
+    name: { type: String, required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+  }],
 }, { timestamps: true });
 
 module.exports = mongoose.model('Song', SongSchema);

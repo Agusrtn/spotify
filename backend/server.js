@@ -96,7 +96,15 @@ app.post('/upload-song', (req, res) => {
     }
 
     try {
-      const { title, description, lyrics, artistId, uploaderId } = req.body;
+      const { title, description, lyrics, artistId, uploaderId, collaborators: collaboratorsRaw } = req.body;
+
+      let parsedCollaborators = [];
+      if (collaboratorsRaw) {
+        try { parsedCollaborators = JSON.parse(collaboratorsRaw); } catch (_) {}
+        parsedCollaborators = parsedCollaborators
+          .filter(c => c && typeof c.name === 'string' && c.name.trim())
+          .map(c => ({ name: c.name.trim(), userId: c.userId || null }));
+      }
 
       if (!title) return res.status(400).json({ error: 'El titulo es obligatorio' });
       if (!artistId) return res.status(400).json({ error: 'ID de artista faltante. Vuelve a iniciar sesion.' });
@@ -137,10 +145,13 @@ app.post('/upload-song', (req, res) => {
         artist: artistId,
         audioUrl: req.files.audio[0].path,
         coverUrl: req.files.cover ? req.files.cover[0].path : '',
+        collaborators: parsedCollaborators,
       });
 
       await newSong.save();
-      const populatedSong = await Song.findById(newSong._id).populate('artist', 'username _id profilePic bio');
+      const populatedSong = await Song.findById(newSong._id)
+        .populate('artist', 'username _id profilePic bio')
+        .populate('collaborators.userId', 'username _id');
       return res.status(201).json({ message: 'Hit publicado', song: populatedSong });
     } catch (error) {
       console.error('Error en /upload-song:', error.message);
@@ -296,6 +307,7 @@ app.get('/songs', async (req, res) => {
 
     const songs = await Song.find({ artist: artistId })
       .populate('artist', 'username')
+      .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
 
     return res.json(songs);
@@ -309,6 +321,7 @@ app.get('/all-songs', async (req, res) => {
   try {
     const songs = await Song.find()
       .populate('artist', 'username _id')
+      .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
 
     return res.json(songs);
@@ -668,7 +681,7 @@ app.delete('/admin/playlists/:playlistId', async (req, res) => {
 app.put('/songs/:songId', async (req, res) => {
   try {
     const { songId } = req.params;
-    const { title, description, lyrics, userId } = req.body;
+    const { title, description, lyrics, userId, collaborators: collaboratorsRaw } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'Falta userId para autorizar edición' });
@@ -692,9 +705,19 @@ app.put('/songs/:songId', async (req, res) => {
     song.title = (title || '').trim() || song.title;
     song.description = description || '';
     song.lyrics = lyrics || '';
+    if (collaboratorsRaw !== undefined) {
+      try {
+        const parsed = JSON.parse(collaboratorsRaw);
+        song.collaborators = parsed
+          .filter(c => c && typeof c.name === 'string' && c.name.trim())
+          .map(c => ({ name: c.name.trim(), userId: c.userId || null }));
+      } catch (_) {}
+    }
     await song.save();
 
-    const updatedSong = await Song.findById(songId).populate('artist', 'username _id');
+    const updatedSong = await Song.findById(songId)
+      .populate('artist', 'username _id')
+      .populate('collaborators.userId', 'username _id');
     return res.json({ message: 'Canción actualizada', song: updatedSong });
   } catch (error) {
     console.error(error);
@@ -757,6 +780,7 @@ app.get('/search-all', async (req, res) => {
         title: { $regex: query, $options: 'i' },
       })
         .populate('artist', 'username _id profilePic bio')
+        .populate('collaborators.userId', 'username _id')
         .sort(songSort)
         .limit(20)
       : [];
@@ -789,6 +813,7 @@ app.get('/artists/:artistId', async (req, res) => {
 
     const songs = await Song.find({ artist: artistId })
       .populate('artist', 'username _id profilePic bio')
+      .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
 
     const albums = await Album.find({ artist: artistId })
