@@ -1035,6 +1035,7 @@ function App() {
       if (!res.ok) return alert(data.error || 'No se pudo guardar la cancion');
 
       setSelectedSong(data.song);
+      setCurrentSong((prev) => (prev && prev._id === songId ? data.song : prev));
       setAllSongs((prev) => prev.map((song) => (song._id === songId ? data.song : song)));
       setMySongs((prev) => prev.map((song) => (song._id === songId ? data.song : song)));
       setPlaylists((prev) => prev.map((playlist) => ({
@@ -3271,8 +3272,10 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
   const [description, setDescription] = useState('');
   const [lyrics, setLyrics] = useState('');
   const [artistId, setArtistId] = useState('');
+  const [collaborators, setCollaborators] = useState([]);
   const [panelGradient, setPanelGradient] = useState(getRandomAlbumGradient());
   const [saving, setSaving] = useState(false);
+  const collabTimerRef = useRef({});
 
   useEffect(() => {
     if (!song) return;
@@ -3280,9 +3283,18 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
     setDescription(song.description || '');
     setLyrics(song.lyrics || '');
     setArtistId(song.artist?._id || '');
+    setCollaborators((song.collaborators || []).map((collaborator) => ({
+      name: collaborator.userId?.username || collaborator.name || '',
+      userId: collaborator.userId?._id || collaborator.userId || null,
+      suggestions: [],
+    })));
     setPanelGradient(getRandomAlbumGradient());
     setIsEditing(false);
   }, [song]);
+
+  useEffect(() => () => {
+    Object.values(collabTimerRef.current || {}).forEach((timerId) => clearTimeout(timerId));
+  }, []);
 
   if (!song) return null;
 
@@ -3293,6 +3305,32 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
     ? (members || []).filter((member) => member.role === 'artist' || member.role === 'admin')
     : [];
 
+  const addCollaborator = () => setCollaborators((prev) => [...prev, { name: '', userId: null, suggestions: [] }]);
+  const removeCollaborator = (index) => setCollaborators((prev) => prev.filter((_, idx) => idx !== index));
+  const handleCollaboratorNameChange = (index, value) => {
+    setCollaborators((prev) => prev.map((collaborator, idx) => (
+      idx === index ? { ...collaborator, name: value, userId: null, suggestions: [] } : collaborator
+    )));
+    if (collabTimerRef.current[index]) clearTimeout(collabTimerRef.current[index]);
+    if (value.length >= 2) {
+      collabTimerRef.current[index] = setTimeout(async () => {
+        try {
+          const res = await fetch(`${API_URL}/search?query=${encodeURIComponent(value)}`);
+          const users = await res.json().catch(() => []);
+          setCollaborators((prev) => prev.map((collaborator, idx) => (
+            idx === index ? { ...collaborator, suggestions: Array.isArray(users) ? users : [] } : collaborator
+          )));
+        } catch (_) {}
+      }, 300);
+    }
+  };
+  const selectCollaboratorUser = (index, member) => {
+    if (collabTimerRef.current[index]) clearTimeout(collabTimerRef.current[index]);
+    setCollaborators((prev) => prev.map((collaborator, idx) => (
+      idx === index ? { ...collaborator, name: member.username, userId: member._id, suggestions: [] } : collaborator
+    )));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     await onSave(song._id, {
@@ -3300,6 +3338,16 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
       description,
       lyrics,
       ...(user?.role === 'admin' ? { artistId } : {}),
+      ...(user?.role === 'admin' ? {
+        collaborators: JSON.stringify(
+          collaborators
+            .filter((collaborator) => String(collaborator.name || '').trim())
+            .map((collaborator) => ({
+              name: String(collaborator.name || '').trim(),
+              userId: collaborator.userId || null,
+            }))
+        ),
+      } : {}),
     });
     setSaving(false);
     setIsEditing(false);
@@ -3393,15 +3441,64 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
               {isEditing ? (
                 <>
                   {user?.role === 'admin' && (
-                    <select
-                      value={artistId}
-                      onChange={(e) => setArtistId(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 outline-none focus:border-yellow-400"
-                    >
-                      {artistOptions.map((member) => (
-                        <option key={member._id} value={member._id}>{member.username} ({member.role})</option>
-                      ))}
-                    </select>
+                    <>
+                      <select
+                        value={artistId}
+                        onChange={(e) => setArtistId(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 outline-none focus:border-yellow-400"
+                      >
+                        {artistOptions.map((member) => (
+                          <option key={member._id} value={member._id}>{member.username} ({member.role})</option>
+                        ))}
+                      </select>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Colaboradores</p>
+                          <button
+                            type="button"
+                            onClick={addCollaborator}
+                            className="flex items-center gap-1 text-[10px] text-yellow-400 font-bold uppercase tracking-widest hover:text-yellow-300"
+                          >
+                            <Plus size={12} /> Añadir
+                          </button>
+                        </div>
+
+                        {collaborators.length > 0 ? collaborators.map((collaborator, index) => (
+                          <div key={`detail-collaborator-${index}`} className="relative flex items-start gap-2">
+                            <div className="relative flex-1">
+                              <input
+                                type="text"
+                                value={collaborator.name}
+                                placeholder="NOMBRE DEL COLABORADOR"
+                                onChange={(e) => handleCollaboratorNameChange(index, e.target.value)}
+                                className={`w-full bg-black/40 p-3 rounded-xl border ${collaborator.userId ? 'border-yellow-400/60' : 'border-white/10'} outline-none focus:border-yellow-400 text-white text-sm font-bold`}
+                              />
+                              {collaborator.userId && <p className="text-[9px] text-yellow-400/80 mt-1 pl-1 font-bold uppercase tracking-widest">✓ Cuenta registrada</p>}
+                              {collaborator.suggestions?.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden z-50 shadow-xl max-h-48 overflow-y-auto">
+                                  {collaborator.suggestions.slice(0, 5).map((member) => (
+                                    <button
+                                      key={member._id}
+                                      type="button"
+                                      onClick={() => selectCollaboratorUser(index, member)}
+                                      className="w-full text-left px-3 py-2 hover:bg-white/10 flex items-center gap-2 text-sm"
+                                    >
+                                      {member.profilePic ? <img src={member.profilePic} alt={member.username} className="w-6 h-6 rounded-full object-cover flex-shrink-0" /> : <div className="w-6 h-6 rounded-full bg-yellow-400/20 flex items-center justify-center text-[10px] font-black text-yellow-400 flex-shrink-0">{member.username.charAt(0).toUpperCase()}</div>}
+                                      <span className="font-bold truncate">{member.username}</span>
+                                      <span className="text-[10px] text-gray-500 ml-auto uppercase">{member.role}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <button type="button" onClick={() => removeCollaborator(index)} className="p-2 mt-1 text-gray-500 hover:text-red-400 flex-shrink-0">
+                              <X size={16} />
+                            </button>
+                          </div>
+                        )) : <p className="text-xs text-gray-500">No hay colaboradores cargados.</p>}
+                      </div>
+                    </>
                   )}
                   <input
                     value={title}
