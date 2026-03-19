@@ -1110,7 +1110,11 @@ app.get('/discovery-feed', async (req, res) => {
 
     const freshAlbums = await Album.find()
       .populate('artist', 'username _id profilePic bio')
-      .populate('songs', 'title artist coverUrl audioUrl')
+      .populate({
+        path: 'songs',
+        select: 'title artist coverUrl audioUrl',
+        populate: { path: 'artist', select: 'username _id profilePic role' },
+      })
       .sort({ createdAt: -1 })
       .limit(8);
 
@@ -1152,7 +1156,11 @@ app.get('/artists/:artistId', async (req, res) => {
 
     const albums = await Album.find({ artist: artistId })
       .populate('artist', 'username _id profilePic bio')
-      .populate('songs', 'title artist coverUrl audioUrl')
+      .populate({
+        path: 'songs',
+        select: 'title artist coverUrl audioUrl',
+        populate: { path: 'artist', select: 'username _id profilePic role' },
+      })
       .sort({ releaseDate: -1 });
 
     const artistSafe = {
@@ -1878,7 +1886,11 @@ app.get('/albums', async (req, res) => {
   try {
     const albums = await Album.find()
       .populate('artist', 'username profilePic role')
-      .populate('songs', 'title artist coverUrl audioUrl');
+      .populate({
+        path: 'songs',
+        select: 'title artist coverUrl audioUrl',
+        populate: { path: 'artist', select: 'username _id profilePic role' },
+      });
     return res.json(albums);
   } catch (error) {
     console.error(error);
@@ -1892,7 +1904,11 @@ app.get('/albums/artist/:artistId', async (req, res) => {
     const { artistId } = req.params;
     const albums = await Album.find({ artist: artistId })
       .populate('artist', 'username profilePic role')
-      .populate('songs', 'title artist coverUrl audioUrl');
+      .populate({
+        path: 'songs',
+        select: 'title artist coverUrl audioUrl',
+        populate: { path: 'artist', select: 'username _id profilePic role' },
+      });
     return res.json(albums);
   } catch (error) {
     console.error(error);
@@ -2022,7 +2038,11 @@ app.put('/albums/:albumId', async (req, res) => {
 
     await album.save();
     await album.populate('artist', 'username profilePic role');
-    await album.populate('songs', 'title artist coverUrl audioUrl');
+    await album.populate({
+      path: 'songs',
+      select: 'title artist coverUrl audioUrl',
+      populate: { path: 'artist', select: 'username _id profilePic role' },
+    });
 
     return res.json({ album });
   } catch (error) {

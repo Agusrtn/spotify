@@ -3365,6 +3365,7 @@ function App() {
         album={selectedAlbum}
         onClose={() => setSelectedAlbum(null)}
         user={user}
+        allSongs={allSongs}
         onPlaySong={(song, albumIndex, albumSongs) => {
           const normalizedAlbumSongs = (albumSongs || []).map((albumSong) => {
             const idx = allSongs.findIndex((item) => item._id === albumSong._id);
@@ -3842,8 +3843,16 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist, isLi
   );
 };
 
-const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onShare, isLiked, onToggleLike, onEdit, onDelete }) => {
+const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenArtist, onShare, isLiked, onToggleLike, onEdit, onDelete }) => {
   const [panelGradient, setPanelGradient] = useState(getRandomAlbumGradient());
+  const songsById = useMemo(() => {
+    const map = new Map();
+    (allSongs || []).forEach((song) => {
+      if (song?._id) map.set(String(song._id), song);
+    });
+    return map;
+  }, [allSongs]);
+
   useEffect(() => {
     if (album) {
       setPanelGradient(getRandomAlbumGradient());
@@ -3853,6 +3862,12 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onSh
   if (!album) return null;
 
   const isOwner = user && (String(user._id) === String(album.artist?._id) || user.role === 'admin');
+
+  const resolveSongArtist = (song) => {
+    if (song?.artist?.username) return song.artist;
+    const fallback = songsById.get(String(song?._id || ''));
+    return fallback?.artist || song?.artist || null;
+  };
 
   return (
     <div className="fixed inset-0 z-[105] bg-black/85 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
@@ -3920,8 +3935,15 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onSh
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-white truncate">{song.title}</p>
-                <button type="button" onClick={() => song.artist?._id && onOpenArtist(song.artist._id)} className="text-xs text-white/60 hover:text-yellow-300 truncate block">
-                  {song.artist?.username || 'Artista'}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const artist = resolveSongArtist(song);
+                    if (artist?._id) onOpenArtist(artist._id);
+                  }}
+                  className="text-xs text-white/60 hover:text-yellow-300 truncate block"
+                >
+                  {resolveSongArtist(song)?.username || 'Artista'}
                 </button>
               </div>
               <button
