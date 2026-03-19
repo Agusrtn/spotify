@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { API_URL } from './config';
@@ -122,6 +122,7 @@ function App() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [memberUsernameDrafts, setMemberUsernameDrafts] = useState({});
   const [memberPasswordDrafts, setMemberPasswordDrafts] = useState({});
   const [memberPasswordConfirmDrafts, setMemberPasswordConfirmDrafts] = useState({});
   const [memberActionLoading, setMemberActionLoading] = useState({});
@@ -635,6 +636,13 @@ function App() {
   }, [isModalOpen, user]);
 
   useEffect(() => {
+    if (isAlbumModalOpen && user?.role === 'admin' && members.length === 0) {
+      fetchMembers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAlbumModalOpen, user, members.length]);
+
+  useEffect(() => {
     if (selectedSong && user?.role === 'admin' && members.length === 0) {
       fetchMembers();
     }
@@ -1104,6 +1112,47 @@ function App() {
     }
   };
 
+  const updateMemberUsername = async (memberId) => {
+    const username = String(memberUsernameDrafts[memberId] || '').trim();
+    if (!username) {
+      alert('Escribe un nombre de usuario válido');
+      return;
+    }
+
+    setMemberActionLoading((prev) => ({ ...prev, [memberId]: true }));
+    try {
+      const res = await fetch(`${API_URL}/admin/users/${memberId}/username`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, username }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || 'No se pudo cambiar el nombre de usuario');
+        return;
+      }
+
+      setMembers((prev) => prev.map((m) => (
+        m._id === memberId ? { ...m, username: data.user?.username || username } : m
+      )));
+      setMemberUsernameDrafts((prev) => ({
+        ...prev,
+        [memberId]: data.user?.username || username,
+      }));
+
+      if (user._id === memberId) {
+        setUser((prev) => ({ ...prev, username: data.user?.username || username }));
+      }
+
+      alert('Nombre de usuario actualizado');
+    } catch (err) {
+      console.error(err);
+      alert('Error al cambiar nombre de usuario');
+    } finally {
+      setMemberActionLoading((prev) => ({ ...prev, [memberId]: false }));
+    }
+  };
+
   const resetMemberPassword = async (memberId) => {
     const newPassword = memberPasswordDrafts[memberId] || '';
     const confirmPassword = memberPasswordConfirmDrafts[memberId] || '';
@@ -1191,6 +1240,11 @@ function App() {
         return next;
       });
       setMemberPasswordConfirmDrafts((prev) => {
+        const next = { ...prev };
+        delete next[memberId];
+        return next;
+      });
+      setMemberUsernameDrafts((prev) => {
         const next = { ...prev };
         delete next[memberId];
         return next;
@@ -2081,6 +2135,23 @@ function App() {
                       </select>
                     </div>
 
+                    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-center">
+                      <input
+                        type="text"
+                        value={memberUsernameDrafts[member._id] ?? member.username}
+                        onChange={(e) => setMemberUsernameDrafts((prev) => ({ ...prev, [member._id]: e.target.value }))}
+                        placeholder="Nuevo nombre de usuario"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-3 text-sm outline-none focus:border-yellow-400"
+                      />
+                      <button
+                        onClick={() => updateMemberUsername(member._id)}
+                        disabled={Boolean(memberActionLoading[member._id])}
+                        className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase whitespace-nowrap disabled:opacity-60"
+                      >
+                        Guardar usuario
+                      </button>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-3 items-center">
                       <input
                         type="password"
@@ -2302,6 +2373,7 @@ function App() {
         isOpen={isAlbumModalOpen}
         onClose={() => { setIsAlbumModalOpen(false); setAlbumToEdit(null); }}
         user={user}
+        members={members}
         allSongs={allSongs}
         fetchAlbums={fetchAlbums}
         albumToEdit={albumToEdit}
@@ -2735,15 +2807,24 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onSh
   );
 };
 
-const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumToEdit, onAlbumUpdated }) => {
+const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbums, albumToEdit, onAlbumUpdated }) => {
   const isEditing = !!albumToEdit;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
   const [releaseYear, setReleaseYear] = useState(new Date().getFullYear());
+  const [artistId, setArtistId] = useState(user?._id || '');
   const [selectedSongs, setSelectedSongs] = useState([]);
   const [previewGradient, setPreviewGradient] = useState(getRandomAlbumGradient());
   const [loading, setLoading] = useState(false);
+  const artistOptions = user?.role === 'admin'
+    ? (members || []).filter((member) => member.role === 'artist' || member.role === 'admin')
+    : [];
+  const selectedArtistId = user?.role === 'admin' ? artistId : user._id;
+  const userSongs = useMemo(
+    () => allSongs.filter((song) => String(song.artist?._id) === String(selectedArtistId)),
+    [allSongs, selectedArtistId]
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -2752,6 +2833,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
         setDescription(albumToEdit.description || '');
         setCoverUrl(albumToEdit.coverUrl || '');
         setReleaseYear(Number(albumToEdit.releaseYear) || new Date().getFullYear());
+        setArtistId(albumToEdit.artist?._id || user?._id || '');
         setSelectedSongs(albumToEdit.songs?.map((s) => s._id || s) || []);
         setPreviewGradient(getAlbumGradient(albumToEdit._id));
       } else {
@@ -2759,11 +2841,16 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
         setDescription('');
         setCoverUrl('');
         setReleaseYear(new Date().getFullYear());
+        setArtistId(user?._id || '');
         setSelectedSongs([]);
         setPreviewGradient(getRandomAlbumGradient());
       }
     }
-  }, [isOpen, albumToEdit]);
+  }, [isOpen, albumToEdit, user]);
+
+  useEffect(() => {
+    setSelectedSongs((prev) => prev.filter((songId) => userSongs.some((song) => String(song._id) === String(songId))));
+  }, [artistId, user?._id, userSongs]);
 
   if (!isOpen) return null;
 
@@ -2788,6 +2875,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user._id,
+          artistId,
           title: title.trim(),
           description: description.trim(),
           coverUrl: coverUrl.trim(),
@@ -2816,8 +2904,6 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
     }
   };
 
-  const userSongs = allSongs.filter((song) => String(song.artist?._id) === String(user._id));
-
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-start md:items-center justify-center p-4 overflow-y-auto">
       <form onSubmit={handleSave} className="bg-[#121212] border border-white/10 w-full max-w-2xl rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
@@ -2837,6 +2923,17 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
 
           {/* Form */}
           <div className="space-y-4">
+            {user?.role === 'admin' && (
+              <select
+                value={artistId}
+                onChange={(e) => setArtistId(e.target.value)}
+                className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
+              >
+                {artistOptions.map((member) => (
+                  <option key={member._id} value={member._id}>{member.username} ({member.role})</option>
+                ))}
+              </select>
+            )}
             <input
               type="text"
               placeholder="TÍTULO DEL ÁLBUM"
@@ -2896,7 +2993,9 @@ const AlbumCreateModal = ({ isOpen, onClose, user, allSongs, fetchAlbums, albumT
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">No tienes canciones subidas aún</p>
+            <p className="text-sm text-gray-500">
+              {user?.role === 'admin' ? 'Ese artista no tiene canciones subidas aún' : 'No tienes canciones subidas aún'}
+            </p>
           )}
         </div>
 

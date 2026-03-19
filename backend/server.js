@@ -1010,6 +1010,52 @@ app.put('/admin/users/:userId/role', async (req, res) => {
   }
 });
 
+app.put('/admin/users/:userId/username', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId, username } = req.body;
+
+    const nextUsername = String(username || '').trim();
+    if (!requesterId || !nextUsername) {
+      return res.status(400).json({ error: 'Faltan datos para actualizar usuario' });
+    }
+
+    const requester = await User.findById(requesterId).select('role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden cambiar nombres de usuario' });
+    }
+
+    const targetUser = await User.findById(userId).select('_id username role profilePic');
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const exists = await User.findOne({
+      _id: { $ne: userId },
+      username: { $regex: `^${nextUsername}$`, $options: 'i' },
+    }).select('_id');
+    if (exists) {
+      return res.status(400).json({ error: 'Ese nombre de usuario ya está en uso' });
+    }
+
+    targetUser.username = nextUsername;
+    await targetUser.save();
+
+    return res.json({
+      message: 'Nombre de usuario actualizado',
+      user: {
+        _id: targetUser._id,
+        username: targetUser.username,
+        role: targetUser.role,
+        profilePic: targetUser.profilePic,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al cambiar nombre de usuario' });
+  }
+});
+
 app.put('/admin/users/:userId/password', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -1121,13 +1167,13 @@ app.get('/albums/artist/:artistId', async (req, res) => {
 // CREATE album (artist)
 app.post('/albums', async (req, res) => {
   try {
-    const { title, description, coverUrl, releaseYear, userId } = req.body;
+    const { title, description, coverUrl, releaseYear, songIds, artistId, userId } = req.body;
 
     if (!title || !userId) {
       return res.status(400).json({ error: 'Título y userId son requeridos' });
     }
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select('_id role');
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
@@ -1136,13 +1182,34 @@ app.post('/albums', async (req, res) => {
       return res.status(403).json({ error: 'Solo artistas y admins pueden crear álbumes' });
     }
 
+    const targetArtistId = (user.role === 'admin' && artistId) ? artistId : userId;
+    const targetArtist = await User.findById(targetArtistId).select('_id role');
+    if (!targetArtist) {
+      return res.status(404).json({ error: 'Artista no encontrado' });
+    }
+
+    if (targetArtist.role !== 'artist' && targetArtist.role !== 'admin') {
+      return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de artista' });
+    }
+
+    const sanitizedSongIds = Array.isArray(songIds) ? songIds : [];
+    if (sanitizedSongIds.length > 0) {
+      const songsCount = await Song.countDocuments({
+        _id: { $in: sanitizedSongIds },
+        artist: targetArtistId,
+      });
+      if (songsCount !== sanitizedSongIds.length) {
+        return res.status(400).json({ error: 'Solo puedes agregar canciones del artista seleccionado' });
+      }
+    }
+
     const album = new Album({
       title,
       description: description || '',
       coverUrl: coverUrl || '',
       releaseYear: Number(releaseYear) || new Date().getFullYear(),
-      artist: userId,
-      songs: [],
+      artist: targetArtistId,
+      songs: sanitizedSongIds,
     });
 
     await album.save();
@@ -1159,7 +1226,7 @@ app.post('/albums', async (req, res) => {
 app.put('/albums/:albumId', async (req, res) => {
   try {
     const { albumId } = req.params;
-    const { title, description, coverUrl, songIds, releaseYear, userId } = req.body;
+    const { title, description, coverUrl, songIds, releaseYear, artistId, userId } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'userId es requerido' });
@@ -1179,11 +1246,41 @@ app.put('/albums/:albumId', async (req, res) => {
       return res.status(403).json({ error: 'No tienes permiso para editar este álbum' });
     }
 
+    let targetArtistId = String(album.artist);
+    if (artistId !== undefined) {
+      if (user.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo admins pueden cambiar el artista del álbum' });
+      }
+
+      const nextArtist = await User.findById(artistId).select('_id role');
+      if (!nextArtist) {
+        return res.status(404).json({ error: 'Artista no encontrado' });
+      }
+
+      if (nextArtist.role !== 'artist' && nextArtist.role !== 'admin') {
+        return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de artista' });
+      }
+
+      album.artist = artistId;
+      targetArtistId = String(artistId);
+    }
+
     if (title) album.title = title;
     if (description !== undefined) album.description = description;
     if (coverUrl !== undefined) album.coverUrl = coverUrl;
     if (releaseYear !== undefined) album.releaseYear = Number(releaseYear) || album.releaseYear;
-    if (Array.isArray(songIds)) album.songs = songIds;
+    if (Array.isArray(songIds)) {
+      if (songIds.length > 0) {
+        const songsCount = await Song.countDocuments({
+          _id: { $in: songIds },
+          artist: targetArtistId,
+        });
+        if (songsCount !== songIds.length) {
+          return res.status(400).json({ error: 'Solo puedes agregar canciones del artista seleccionado' });
+        }
+      }
+      album.songs = songIds;
+    }
 
     await album.save();
     await album.populate('artist', 'username profilePic role');
