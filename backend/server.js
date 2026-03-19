@@ -181,7 +181,13 @@ const buildUserLibraryPayload = async (userId) => {
   const likedPlaylistsRaw = likedPlaylistIds.length
     ? await Playlist.find({ _id: { $in: likedPlaylistIds } })
       .populate('creator', 'username _id profilePic')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } })
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      })
     : [];
 
   const historySorted = [...(user.listeningHistory || [])]
@@ -597,7 +603,10 @@ app.get('/playlists', async (req, res) => {
       .populate('creator', 'username _id')
       .populate({
         path: 'songs',
-        populate: { path: 'artist', select: 'username _id profilePic' },
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
       })
       .sort({ createdAt: -1 });
 
@@ -617,7 +626,13 @@ app.get('/my-playlists', async (req, res) => {
 
     const playlists = await Playlist.find({ creator: userId })
       .populate('creator', 'username _id')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } })
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      })
       .sort({ createdAt: -1 });
 
     return res.json(playlists);
@@ -652,7 +667,13 @@ app.post('/my-playlists', async (req, res) => {
     await playlist.save();
     const populatedPlaylist = await Playlist.findById(playlist._id)
       .populate('creator', 'username _id')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      });
 
     return res.status(201).json({ message: 'Playlist creada', playlist: populatedPlaylist });
   } catch (error) {
@@ -694,7 +715,13 @@ app.put('/my-playlists/:playlistId', async (req, res) => {
     await playlist.save();
     const populatedPlaylist = await Playlist.findById(playlist._id)
       .populate('creator', 'username _id')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      });
 
     return res.json({ message: 'Playlist actualizada', playlist: populatedPlaylist });
   } catch (error) {
@@ -764,7 +791,13 @@ app.post('/my-playlists/:playlistId/songs', async (req, res) => {
 
     const populatedPlaylist = await Playlist.findById(playlist._id)
       .populate('creator', 'username _id')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      });
 
     return res.json({ message: 'Canción añadida a playlist', playlist: populatedPlaylist });
   } catch (error) {
@@ -801,7 +834,13 @@ app.delete('/my-playlists/:playlistId/songs/:songId', async (req, res) => {
 
     const populatedPlaylist = await Playlist.findById(playlist._id)
       .populate('creator', 'username _id')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      });
 
     return res.json({ message: 'Canción eliminada de playlist', playlist: populatedPlaylist });
   } catch (error) {
@@ -835,7 +874,13 @@ app.post('/admin/playlists', async (req, res) => {
     await playlist.save();
     const populatedPlaylist = await Playlist.findById(playlist._id)
       .populate('creator', 'username _id')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      });
 
     return res.status(201).json({ message: 'Playlist creada', playlist: populatedPlaylist });
   } catch (error) {
@@ -868,7 +913,13 @@ app.put('/admin/playlists/:playlistId', async (req, res) => {
     await playlist.save();
     const populatedPlaylist = await Playlist.findById(playlist._id)
       .populate('creator', 'username _id')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } });
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      });
 
     return res.json({ message: 'Playlist actualizada', playlist: populatedPlaylist });
   } catch (error) {
@@ -1137,7 +1188,13 @@ app.get('/discovery-feed', async (req, res) => {
 
     const discoveryPlaylists = await Playlist.find({ isPublic: true })
       .populate('creator', 'username _id profilePic')
-      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } })
+      .populate({
+        path: 'songs',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      })
       .sort({ isDefault: -1, createdAt: -1 })
       .limit(8);
 

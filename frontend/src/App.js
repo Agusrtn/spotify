@@ -3346,6 +3346,7 @@ function App() {
 
       <PlaylistDetailPanel
         playlist={selectedPlaylist}
+        allSongs={allSongs}
         onClose={() => setSelectedPlaylist(null)}
         onPlaySong={(song, playlistIndex, playlistSongs) => {
           const normalizedPlaylistSongs = (playlistSongs || []).map((playlistSong) => {
@@ -3798,8 +3799,30 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
   );
 };
 
-const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist, isLiked, onToggleLike }) => {
+const PlaylistDetailPanel = ({ playlist, allSongs, onClose, onPlaySong, onOpenArtist, isLiked, onToggleLike }) => {
   const [panelGradient, setPanelGradient] = useState(getRandomAlbumGradient());
+  const songsById = useMemo(() => {
+    const map = new Map();
+    (allSongs || []).forEach((song) => {
+      if (song?._id) map.set(String(song._id), song);
+    });
+    return map;
+  }, [allSongs]);
+
+  const resolveSongArtist = (song) => {
+    if (song?.artist?.username) return song.artist;
+    const fallback = songsById.get(String(song?._id || ''));
+    return fallback?.artist || song?.artist || null;
+  };
+
+  const resolveSongCollaborators = (song) => {
+    if (Array.isArray(song?.collaborators) && song.collaborators.length > 0) {
+      return song.collaborators;
+    }
+    const fallback = songsById.get(String(song?._id || ''));
+    return fallback?.collaborators || [];
+  };
+
   useEffect(() => {
     if (playlist) {
       setPanelGradient(getRandomAlbumGradient());
@@ -3846,9 +3869,40 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist, isLi
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold truncate">{song.title}</p>
-                <button type="button" onClick={() => song.artist?._id && onOpenArtist(song.artist._id)} className="text-xs text-gray-400 hover:text-yellow-300 truncate block">
-                  {song.artist?.username || 'Artista'}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const artist = resolveSongArtist(song);
+                    if (artist?._id) onOpenArtist(artist._id);
+                  }}
+                  className="text-xs text-gray-400 hover:text-yellow-300 truncate block"
+                >
+                  {resolveSongArtist(song)?.username || 'Artista'}
                 </button>
+                {resolveSongCollaborators(song).length > 0 && (
+                  <div className="text-[11px] text-white/50 truncate mt-1">
+                    {resolveSongCollaborators(song).map((collaborator, collaboratorIndex) => {
+                      const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                      const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
+                      return (
+                        <span key={`${song._id}-playlist-collab-${collaboratorIndex}`}>
+                          {collaboratorIndex > 0 ? ', ' : ''}
+                          {collaboratorId ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenArtist(collaboratorId)}
+                              className="inline hover:text-yellow-300"
+                            >
+                              {collaboratorName}
+                            </button>
+                          ) : (
+                            <span>{collaboratorName}</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => onPlaySong(song, index, playlist.songs || [])}

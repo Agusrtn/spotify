@@ -110,6 +110,11 @@ const Layout = ({
     audioRef.current.currentTime = percent * duration;
   };
 
+  const currentSongCollaborators = useMemo(
+    () => (currentSong?.collaborators || []).filter((collaborator) => (collaborator?.userId?.username || collaborator?.name)),
+    [currentSong?.collaborators]
+  );
+
   return (
     <div className="flex h-screen bg-[#080808] text-white font-sans overflow-hidden">
       
@@ -260,6 +265,30 @@ const Layout = ({
             >
               {currentSong?.artist?.username || 'System Radio'}
             </button>
+            {currentSongCollaborators.length > 0 && (
+              <div className="text-[10px] text-white/55 truncate mt-1">
+                {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
+                  const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                  const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
+                  return (
+                    <span key={`player-collab-desktop-${collaboratorIndex}`}>
+                      {collaboratorIndex > 0 ? ', ' : ''}
+                      {collaboratorId ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenArtist(collaboratorId)}
+                          className="inline hover:text-yellow-300"
+                        >
+                          {collaboratorName}
+                        </button>
+                      ) : (
+                        <span>{collaboratorName}</span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -339,6 +368,14 @@ const Layout = ({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black truncate">{currentSong?.title || 'RTN MUSIC'}</p>
             <p className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">{currentSong?.artist?.username || 'System Radio'}</p>
+            {currentSongCollaborators.length > 0 && (
+              <p className="text-[9px] text-white/55 truncate mt-0.5">
+                {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
+                  const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                  return `${collaboratorIndex > 0 ? ', ' : ''}${collaboratorName}`;
+                })}
+              </p>
+            )}
           </div>
           <button onClick={prevSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
             <SkipBack size={18} />
