@@ -3869,40 +3869,38 @@ const PlaylistDetailPanel = ({ playlist, allSongs, onClose, onPlaySong, onOpenAr
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold truncate">{song.title}</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const artist = resolveSongArtist(song);
-                    if (artist?._id) onOpenArtist(artist._id);
-                  }}
-                  className="text-xs text-gray-400 hover:text-yellow-300 truncate block"
-                >
-                  {resolveSongArtist(song)?.username || 'Artista'}
-                </button>
-                {resolveSongCollaborators(song).length > 0 && (
-                  <div className="text-[11px] text-white/50 truncate mt-1">
-                    {resolveSongCollaborators(song).map((collaborator, collaboratorIndex) => {
-                      const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
-                      const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
-                      return (
-                        <span key={`${song._id}-playlist-collab-${collaboratorIndex}`}>
-                          {collaboratorIndex > 0 ? ', ' : ''}
-                          {collaboratorId ? (
-                            <button
-                              type="button"
-                              onClick={() => onOpenArtist(collaboratorId)}
-                              className="inline hover:text-yellow-300"
-                            >
-                              {collaboratorName}
-                            </button>
-                          ) : (
-                            <span>{collaboratorName}</span>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="text-xs text-gray-400 truncate">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const artist = resolveSongArtist(song);
+                      if (artist?._id) onOpenArtist(artist._id);
+                    }}
+                    className="inline hover:text-yellow-300"
+                  >
+                    {resolveSongArtist(song)?.username || 'Artista'}
+                  </button>
+                  {resolveSongCollaborators(song).map((collaborator, collaboratorIndex) => {
+                    const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                    const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
+                    return (
+                      <span key={`${song._id}-playlist-collab-${collaboratorIndex}`}>
+                        {', '}
+                        {collaboratorId ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenArtist(collaboratorId)}
+                            className="inline hover:text-yellow-300"
+                          >
+                            {collaboratorName}
+                          </button>
+                        ) : (
+                          <span>{collaboratorName}</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
               <button
                 onClick={() => onPlaySong(song, index, playlist.songs || [])}
@@ -4019,40 +4017,38 @@ const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenAr
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-white truncate">{song.title}</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const artist = resolveSongArtist(song);
-                    if (artist?._id) onOpenArtist(artist._id);
-                  }}
-                  className="text-xs text-white/60 hover:text-yellow-300 truncate block"
-                >
-                  {resolveSongArtist(song)?.username || 'Artista'}
-                </button>
-                {resolveSongCollaborators(song).length > 0 && (
-                  <div className="text-[11px] text-white/50 truncate mt-1">
-                    {resolveSongCollaborators(song).map((collaborator, collaboratorIndex) => {
-                      const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
-                      const collaboratorId = collaborator?.userId?._id;
-                      return (
-                        <span key={`${song._id}-album-collab-${collaboratorIndex}`}>
-                          {collaboratorIndex > 0 ? ', ' : ''}
-                          {collaboratorId ? (
-                            <button
-                              type="button"
-                              onClick={() => onOpenArtist(collaboratorId)}
-                              className="inline hover:text-yellow-300"
-                            >
-                              {collaboratorName}
-                            </button>
-                          ) : (
-                            <span>{collaboratorName}</span>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="text-xs text-white/60 truncate">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const artist = resolveSongArtist(song);
+                      if (artist?._id) onOpenArtist(artist._id);
+                    }}
+                    className="inline hover:text-yellow-300"
+                  >
+                    {resolveSongArtist(song)?.username || 'Artista'}
+                  </button>
+                  {resolveSongCollaborators(song).map((collaborator, collaboratorIndex) => {
+                    const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                    const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
+                    return (
+                      <span key={`${song._id}-album-collab-${collaboratorIndex}`}>
+                        {', '}
+                        {collaboratorId ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenArtist(collaboratorId)}
+                            className="inline hover:text-yellow-300"
+                          >
+                            {collaboratorName}
+                          </button>
+                        ) : (
+                          <span>{collaboratorName}</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
               <button
                 onClick={() => onPlaySong(song, index, album.songs || [])}

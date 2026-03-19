@@ -258,37 +258,35 @@ const Layout = ({
           </div>
           <div className="min-w-0">
             <h4 className="text-sm font-black text-white tracking-wide truncate">{currentSong?.title || 'FLOW RTN'}</h4>
-            <button
-              type="button"
-              onClick={() => currentSong?.artist?._id && onOpenArtist(currentSong.artist._id)}
-              className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate hover:text-yellow-300"
-            >
-              {currentSong?.artist?.username || 'System Radio'}
-            </button>
-            {currentSongCollaborators.length > 0 && (
-              <div className="text-[10px] text-white/55 truncate mt-1">
-                {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
-                  const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
-                  const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
-                  return (
-                    <span key={`player-collab-desktop-${collaboratorIndex}`}>
-                      {collaboratorIndex > 0 ? ', ' : ''}
-                      {collaboratorId ? (
-                        <button
-                          type="button"
-                          onClick={() => onOpenArtist(collaboratorId)}
-                          className="inline hover:text-yellow-300"
-                        >
-                          {collaboratorName}
-                        </button>
-                      ) : (
-                        <span>{collaboratorName}</span>
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
+            <div className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate">
+              <button
+                type="button"
+                onClick={() => currentSong?.artist?._id && onOpenArtist(currentSong.artist._id)}
+                className="inline hover:text-yellow-300"
+              >
+                {currentSong?.artist?.username || 'System Radio'}
+              </button>
+              {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
+                const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
+                return (
+                  <span key={`player-collab-desktop-${collaboratorIndex}`}>
+                    {', '}
+                    {collaboratorId ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenArtist(collaboratorId)}
+                        className="inline text-white/75 hover:text-yellow-300"
+                      >
+                        {collaboratorName}
+                      </button>
+                    ) : (
+                      <span className="text-white/75">{collaboratorName}</span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -367,15 +365,35 @@ const Layout = ({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black truncate">{currentSong?.title || 'RTN MUSIC'}</p>
-            <p className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">{currentSong?.artist?.username || 'System Radio'}</p>
-            {currentSongCollaborators.length > 0 && (
-              <p className="text-[9px] text-white/55 truncate mt-0.5">
-                {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
-                  const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
-                  return `${collaboratorIndex > 0 ? ', ' : ''}${collaboratorName}`;
-                })}
-              </p>
-            )}
+            <div className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">
+              <button
+                type="button"
+                onClick={() => currentSong?.artist?._id && onOpenArtist(currentSong.artist._id)}
+                className="inline hover:text-yellow-300"
+              >
+                {currentSong?.artist?.username || 'System Radio'}
+              </button>
+              {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
+                const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
+                return (
+                  <span key={`player-collab-mobile-${collaboratorIndex}`}>
+                    {', '}
+                    {collaboratorId ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenArtist(collaboratorId)}
+                        className="inline text-white/75 hover:text-yellow-300"
+                      >
+                        {collaboratorName}
+                      </button>
+                    ) : (
+                      <span className="text-white/75">{collaboratorName}</span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
           </div>
           <button onClick={prevSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
             <SkipBack size={18} />
