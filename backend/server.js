@@ -142,6 +142,91 @@ const runInstagramAutoSync = async () => {
   }
 };
 
+const orderByIds = (items, orderedIds) => {
+  const byId = new Map(items.map((item) => [String(item._id), item]));
+  return orderedIds
+    .map((id) => byId.get(String(id)))
+    .filter(Boolean);
+};
+
+const buildUserLibraryPayload = async (userId) => {
+  const user = await User.findById(userId)
+    .select('likedSongs likedAlbums likedPlaylists listeningHistory');
+
+  if (!user) return null;
+
+  const likedSongIds = (user.likedSongs || []).map((id) => String(id));
+  const likedAlbumIds = (user.likedAlbums || []).map((id) => String(id));
+  const likedPlaylistIds = (user.likedPlaylists || []).map((id) => String(id));
+
+  const likedSongsRaw = likedSongIds.length
+    ? await Song.find({ _id: { $in: likedSongIds } })
+      .populate('artist', 'username _id profilePic bio')
+      .populate('collaborators.userId', 'username _id')
+    : [];
+
+  const likedAlbumsRaw = likedAlbumIds.length
+    ? await Album.find({ _id: { $in: likedAlbumIds } })
+      .populate('artist', 'username _id profilePic bio')
+      .populate('songs', 'title artist coverUrl audioUrl')
+    : [];
+
+  const likedPlaylistsRaw = likedPlaylistIds.length
+    ? await Playlist.find({ _id: { $in: likedPlaylistIds } })
+      .populate('creator', 'username _id profilePic')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } })
+    : [];
+
+  const historySorted = [...(user.listeningHistory || [])]
+    .sort((a, b) => new Date(b.lastPlayedAt || 0).getTime() - new Date(a.lastPlayedAt || 0).getTime())
+    .slice(0, 20);
+
+  const historySongIds = historySorted
+    .map((item) => item.song)
+    .filter(Boolean)
+    .map((id) => String(id));
+
+  const historySongsRaw = historySongIds.length
+    ? await Song.find({ _id: { $in: historySongIds } })
+      .populate('artist', 'username _id profilePic bio')
+      .populate('collaborators.userId', 'username _id')
+    : [];
+  const historySongsById = new Map(historySongsRaw.map((song) => [String(song._id), song]));
+
+  const continueListening = historySorted
+    .map((entry) => {
+      const song = historySongsById.get(String(entry.song));
+      if (!song) return null;
+      const durationSeconds = Math.max(0, Math.floor(Number(entry.durationSeconds || 0)));
+      const positionSeconds = Math.max(0, Math.floor(Number(entry.lastPositionSeconds || 0)));
+      const progressPercent = durationSeconds > 0
+        ? Math.min(100, Math.round((positionSeconds / durationSeconds) * 100))
+        : 0;
+      return {
+        song,
+        positionSeconds,
+        durationSeconds,
+        totalListenedSeconds: Math.max(0, Math.floor(Number(entry.totalListenedSeconds || 0))),
+        completedCount: Math.max(0, Math.floor(Number(entry.completedCount || 0))),
+        progressPercent,
+        lastPlayedAt: entry.lastPlayedAt || null,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    likedSongIds,
+    likedAlbumIds,
+    likedPlaylistIds,
+    favorites: {
+      songs: orderByIds(likedSongsRaw, likedSongIds),
+      albums: orderByIds(likedAlbumsRaw, likedAlbumIds),
+      playlists: orderByIds(likedPlaylistsRaw, likedPlaylistIds),
+    },
+    continueListening,
+  };
+};
+
 // Conexión a MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ RTN conectado a MongoDB"))
@@ -1133,6 +1218,177 @@ app.get('/users/:userId/profile', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener perfil' });
+  }
+});
+
+app.get('/users/:userId/library', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requesterId = req.query.requesterId;
+    if (!requesterId) {
+      return res.status(400).json({ error: 'Falta requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester no encontrado' });
+    }
+
+    if (String(requester._id) !== String(userId) && requester.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para ver esta biblioteca' });
+    }
+
+    const payload = await buildUserLibraryPayload(userId);
+    if (!payload) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    return res.json(payload);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener biblioteca' });
+  }
+});
+
+app.post('/users/:userId/likes/toggle', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId, type, itemId } = req.body;
+    if (!requesterId || !type || !itemId) {
+      return res.status(400).json({ error: 'Faltan requesterId, type o itemId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester no encontrado' });
+    }
+
+    if (String(requester._id) !== String(userId) && requester.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para editar esta biblioteca' });
+    }
+
+    const typeConfig = {
+      song: { key: 'likedSongs', model: Song },
+      album: { key: 'likedAlbums', model: Album },
+      playlist: { key: 'likedPlaylists', model: Playlist },
+    };
+    const config = typeConfig[String(type || '').toLowerCase()];
+    if (!config) {
+      return res.status(400).json({ error: 'type inválido (song|album|playlist)' });
+    }
+
+    const targetExists = await config.model.findById(itemId).select('_id');
+    if (!targetExists) {
+      return res.status(404).json({ error: 'Elemento no encontrado' });
+    }
+
+    const user = await User.findById(userId).select('_id likedSongs likedAlbums likedPlaylists');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const currentIds = (user[config.key] || []).map((id) => String(id));
+    const targetId = String(itemId);
+    const existingIndex = currentIds.findIndex((id) => id === targetId);
+    let liked = false;
+
+    if (existingIndex >= 0) {
+      currentIds.splice(existingIndex, 1);
+    } else {
+      currentIds.unshift(targetId);
+      liked = true;
+    }
+
+    user[config.key] = currentIds;
+    await user.save();
+
+    return res.json({
+      ok: true,
+      type: String(type || '').toLowerCase(),
+      itemId: targetId,
+      liked,
+      ids: currentIds,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar favoritos' });
+  }
+});
+
+app.post('/users/:userId/listening-history', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const {
+      requesterId,
+      songId,
+      positionSeconds,
+      durationSeconds,
+      incrementSeconds,
+      completed,
+    } = req.body;
+
+    if (!requesterId || !songId) {
+      return res.status(400).json({ error: 'Faltan requesterId o songId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester no encontrado' });
+    }
+
+    if (String(requester._id) !== String(userId) && requester.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para actualizar este historial' });
+    }
+
+    const song = await Song.findById(songId).select('_id');
+    if (!song) {
+      return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+
+    const user = await User.findById(userId).select('_id listeningHistory');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const safePosition = Math.max(0, Math.floor(Number(positionSeconds || 0)));
+    const safeDuration = Math.max(0, Math.floor(Number(durationSeconds || 0)));
+    const safeIncrement = Math.min(120, Math.max(0, Math.floor(Number(incrementSeconds || 0))));
+    const isCompleted = Boolean(completed);
+
+    const history = [...(user.listeningHistory || [])];
+    const existingIndex = history.findIndex((entry) => String(entry.song) === String(songId));
+
+    if (existingIndex >= 0) {
+      const entry = history[existingIndex];
+      if (safeDuration > 0) entry.durationSeconds = safeDuration;
+      if (safeIncrement > 0) entry.totalListenedSeconds = Math.max(0, Number(entry.totalListenedSeconds || 0) + safeIncrement);
+      if (isCompleted) {
+        entry.completedCount = Math.max(0, Number(entry.completedCount || 0) + 1);
+        entry.lastPositionSeconds = 0;
+      } else {
+        entry.lastPositionSeconds = safePosition;
+      }
+      entry.lastPlayedAt = new Date();
+      history[existingIndex] = entry;
+    } else {
+      history.push({
+        song: songId,
+        lastPositionSeconds: isCompleted ? 0 : safePosition,
+        durationSeconds: safeDuration,
+        totalListenedSeconds: safeIncrement,
+        completedCount: isCompleted ? 1 : 0,
+        lastPlayedAt: new Date(),
+      });
+    }
+
+    history.sort((a, b) => new Date(b.lastPlayedAt || 0).getTime() - new Date(a.lastPlayedAt || 0).getTime());
+    user.listeningHistory = history.slice(0, 60);
+    await user.save();
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar historial de escucha' });
   }
 });
 

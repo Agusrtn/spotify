@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { API_URL } from './config';
-import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2 } from 'lucide-react';
+import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3 } from 'lucide-react';
 
 // Album gradient colors (similar to Spotify album art)
 const ALBUM_GRADIENTS = [
@@ -115,6 +115,11 @@ function App() {
   const [userPlaylistForm, setUserPlaylistForm] = useState({ id: null, name: '', description: '', coverUrl: '', isPublic: true, songIds: [] });
   const [userPlaylistSaving, setUserPlaylistSaving] = useState(false);
   const [albums, setAlbums] = useState([]);
+  const [likedSongIds, setLikedSongIds] = useState([]);
+  const [likedAlbumIds, setLikedAlbumIds] = useState([]);
+  const [likedPlaylistIds, setLikedPlaylistIds] = useState([]);
+  const [favoriteLibrary, setFavoriteLibrary] = useState({ songs: [], albums: [], playlists: [] });
+  const [continueListening, setContinueListening] = useState([]);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [, setCurrentIndex] = useState(0);
@@ -162,6 +167,13 @@ function App() {
   const albumsInitializedRef = useRef(false);
   const deepLinkHandledRef = useRef(false);
   const confirmResolverRef = useRef(null);
+  const pendingResumeSecondsRef = useRef(0);
+  const historyPendingSecondsRef = useRef(0);
+  const historySyncInFlightRef = useRef(false);
+
+  const likedSongSet = useMemo(() => new Set((likedSongIds || []).map((id) => String(id))), [likedSongIds]);
+  const likedAlbumSet = useMemo(() => new Set((likedAlbumIds || []).map((id) => String(id))), [likedAlbumIds]);
+  const likedPlaylistSet = useMemo(() => new Set((likedPlaylistIds || []).map((id) => String(id))), [likedPlaylistIds]);
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
@@ -405,6 +417,77 @@ function App() {
     }
   };
 
+  const fetchUserLibrary = async (targetUserId = user?._id) => {
+    if (!targetUserId || !user?._id) return;
+    try {
+      const params = new URLSearchParams({ requesterId: user._id });
+      const res = await fetch(`${API_URL}/users/${targetUserId}/library?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+
+      setLikedSongIds(Array.isArray(data.likedSongIds) ? data.likedSongIds : []);
+      setLikedAlbumIds(Array.isArray(data.likedAlbumIds) ? data.likedAlbumIds : []);
+      setLikedPlaylistIds(Array.isArray(data.likedPlaylistIds) ? data.likedPlaylistIds : []);
+      setFavoriteLibrary(data.favorites || { songs: [], albums: [], playlists: [] });
+      setContinueListening(Array.isArray(data.continueListening) ? data.continueListening : []);
+    } catch (err) {
+      console.error('Error fetching user library:', err);
+    }
+  };
+
+  const toggleFavorite = async (type, itemId) => {
+    if (!user?._id || !itemId) return;
+    try {
+      const res = await fetch(`${API_URL}/users/${user._id}/likes/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, type, itemId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo actualizar favoritos', 'error');
+        return;
+      }
+
+      if (data.type === 'song') setLikedSongIds(Array.isArray(data.ids) ? data.ids : []);
+      if (data.type === 'album') setLikedAlbumIds(Array.isArray(data.ids) ? data.ids : []);
+      if (data.type === 'playlist') setLikedPlaylistIds(Array.isArray(data.ids) ? data.ids : []);
+
+      fetchUserLibrary(user._id);
+    } catch (err) {
+      console.error('Error toggling favorite:', err);
+      showToast('Error al actualizar favoritos', 'error');
+    }
+  };
+
+  const syncListeningHistory = async ({ songId, positionSeconds, durationSeconds, incrementSeconds = 0, completed = false }) => {
+    if (!user?._id || !songId || historySyncInFlightRef.current) return;
+
+    const safeIncrement = Math.max(0, Math.floor(Number(incrementSeconds || 0)));
+    const shouldSend = completed || safeIncrement >= 1;
+    if (!shouldSend) return;
+
+    historySyncInFlightRef.current = true;
+    try {
+      await fetch(`${API_URL}/users/${user._id}/listening-history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requesterId: user._id,
+          songId,
+          positionSeconds: Math.max(0, Math.floor(Number(positionSeconds || 0))),
+          durationSeconds: Math.max(0, Math.floor(Number(durationSeconds || 0))),
+          incrementSeconds: safeIncrement,
+          completed,
+        }),
+      });
+    } catch (err) {
+      console.error('Error syncing listening history:', err);
+    } finally {
+      historySyncInFlightRef.current = false;
+    }
+  };
+
   const fetchArtistStats = async (artistId) => {
     try {
       const res = await fetch(`${API_URL}/artists/${artistId}/stats`);
@@ -472,6 +555,25 @@ function App() {
         ? { ...song, listenSeconds: Number(song.listenSeconds || 0) + Math.floor(pending) }
         : song
     )));
+  };
+
+  const flushPendingHistory = ({ completed = false } = {}) => {
+    const songId = activeSongIdRef.current;
+    if (!songId) return;
+
+    const pending = Math.max(0, Math.floor(Number(historyPendingSecondsRef.current || 0)));
+    if (!completed && pending < 1) return;
+
+    const songDuration = Math.floor(Number(audioRef.current?.duration || duration || 0));
+    syncListeningHistory({
+      songId,
+      positionSeconds: completed ? songDuration : Math.floor(Number(lastTrackedPositionRef.current || 0)),
+      durationSeconds: songDuration,
+      incrementSeconds: pending,
+      completed,
+    });
+
+    historyPendingSecondsRef.current = 0;
   };
 
   const formatListenTime = (seconds) => {
@@ -650,12 +752,14 @@ function App() {
 
   useEffect(() => {
     if (isPlaying) return;
+    flushPendingHistory();
     flushPendingListenTime();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying]);
 
   useEffect(() => {
     return () => {
+      flushPendingHistory();
       flushPendingListenTime();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -685,6 +789,7 @@ function App() {
     }
     if (user?._id) {
       fetchUserPlaylists();
+      fetchUserLibrary(user._id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -729,6 +834,8 @@ function App() {
   };
 
   const handleSongEnd = () => {
+    flushPendingHistory({ completed: true });
+
     if (!playQueue.length || !allSongs.length) {
       setIsPlaying(false);
       return;
@@ -756,23 +863,41 @@ function App() {
   };
 
   const playSong = (song, index, options = {}) => {
+    flushPendingHistory();
     flushPendingListenTime();
 
     const queue = options.queue || allSongs;
     const mode = options.mode || 'all';
+    const startAtSeconds = Math.max(0, Number(options.startAtSeconds || 0));
     setCurrentSong(song);
     setCurrentIndex(index);
     setPlayQueue(queue);
     setQueueIndex(index);
     setPlayMode(mode);
     setIsPlaying(true);
-    setCurrentTime(0);
+    setCurrentTime(startAtSeconds);
     activeSongIdRef.current = song?._id || null;
-    lastTrackedPositionRef.current = 0;
+    lastTrackedPositionRef.current = startAtSeconds;
     pendingListenSecondsRef.current = 0;
+    historyPendingSecondsRef.current = 0;
+    pendingResumeSecondsRef.current = startAtSeconds;
 
     if (song?._id) {
       registerSongPlay(song._id);
+      const initialPosition = Math.floor(startAtSeconds || 0);
+      const initialDuration = Math.max(0, Math.floor(Number(song.duration || 0)));
+      setContinueListening((prev) => {
+        const withoutCurrent = prev.filter((entry) => String(entry.song?._id) !== String(song._id));
+        return [{
+          song,
+          positionSeconds: initialPosition,
+          durationSeconds: initialDuration,
+          totalListenedSeconds: 0,
+          completedCount: 0,
+          progressPercent: initialDuration > 0 ? Math.min(100, Math.round((initialPosition / initialDuration) * 100)) : 0,
+          lastPlayedAt: new Date().toISOString(),
+        }, ...withoutCurrent].slice(0, 20);
+      });
       setAllSongs((prev) => prev.map((item) => (
         item._id === song._id
           ? { ...item, playCount: Number(item.playCount || 0) + 1, lastPlayedAt: new Date().toISOString() }
@@ -785,6 +910,21 @@ function App() {
     setCurrentTime(time);
 
     const songId = activeSongIdRef.current;
+    if (songId) {
+      setContinueListening((prev) => prev.map((entry) => {
+        if (String(entry.song?._id) !== String(songId)) return entry;
+        const durationSeconds = Math.max(0, Math.floor(Number(audioRef.current?.duration || entry.durationSeconds || 0)));
+        const positionSeconds = Math.max(0, Math.floor(Number(time || 0)));
+        return {
+          ...entry,
+          positionSeconds,
+          durationSeconds,
+          progressPercent: durationSeconds > 0 ? Math.min(100, Math.round((positionSeconds / durationSeconds) * 100)) : 0,
+          lastPlayedAt: new Date().toISOString(),
+        };
+      }));
+    }
+
     if (!isPlaying || !songId) {
       lastTrackedPositionRef.current = time;
       return;
@@ -793,8 +933,12 @@ function App() {
     const delta = Number(time) - Number(lastTrackedPositionRef.current || 0);
     if (delta > 0 && delta < 5) {
       pendingListenSecondsRef.current += delta;
+      historyPendingSecondsRef.current += delta;
       if (pendingListenSecondsRef.current >= 5) {
         flushPendingListenTime();
+      }
+      if (historyPendingSecondsRef.current >= 12) {
+        flushPendingHistory();
       }
     }
 
@@ -1501,7 +1645,16 @@ function App() {
       duration={duration}
       audioRef={audioRef}
       onTimeUpdate={handlePlaybackTimeUpdate}
-      onDurationChange={(dur) => setDuration(dur)}
+      onDurationChange={(dur) => {
+        setDuration(dur);
+        const pending = Number(pendingResumeSecondsRef.current || 0);
+        if (!audioRef.current || pending <= 0 || !Number.isFinite(dur) || dur <= 0) return;
+        const nextTime = Math.min(Math.max(0, pending), Math.max(0, dur - 1));
+        audioRef.current.currentTime = nextTime;
+        setCurrentTime(nextTime);
+        lastTrackedPositionRef.current = nextTime;
+        pendingResumeSecondsRef.current = 0;
+      }}
       onSongEnd={handleSongEnd}
       onOpenArtist={openArtistProfile}
       unreadNotifications={unreadNotifications}
@@ -1512,6 +1665,159 @@ function App() {
           <h1 className="text-4xl md:text-7xl font-black mb-4 md:mb-8 tracking-tighter uppercase italic">
             EXPLORA EL <span className="text-yellow-400 font-black">SONIDO</span>
           </h1>
+
+          <section className="mb-14">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl md:text-3xl font-black tracking-tight">Tus favoritos</h3>
+              <span className="text-sm text-gray-400 font-bold">{likedSongIds.length + likedAlbumIds.length + likedPlaylistIds.length} guardados</span>
+            </div>
+
+            {(favoriteLibrary.songs?.length || favoriteLibrary.albums?.length || favoriteLibrary.playlists?.length) ? (
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                  <p className="text-xs font-black text-pink-300 uppercase tracking-[0.2em] mb-4">Canciones</p>
+                  <div className="space-y-2">
+                    {(favoriteLibrary.songs || []).slice(0, 4).map((song) => {
+                      const idx = allSongs.findIndex((item) => String(item._id) === String(song._id));
+                      return (
+                        <div key={song._id} className="flex items-center gap-3 bg-black/30 border border-white/10 rounded-2xl p-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const queue = idx >= 0 ? allSongs : [song, ...allSongs.filter((item) => String(item._id) !== String(song._id))];
+                              const startIndex = idx >= 0 ? idx : 0;
+                              playSong(song, startIndex, { queue, mode: 'all' });
+                            }}
+                            className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0"
+                          >
+                            {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={16} className="text-yellow-400/40" /></div>}
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold truncate">{song.title}</p>
+                            <p className="text-[10px] text-gray-400 uppercase truncate">{song.artist?.username || 'Artista'}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleFavorite('song', song._id)}
+                            className="w-8 h-8 rounded-lg border border-pink-300/40 text-pink-300 bg-pink-500/10 flex items-center justify-center"
+                          >
+                            <Heart size={14} fill="currentColor" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                  <p className="text-xs font-black text-pink-300 uppercase tracking-[0.2em] mb-4">Álbumes</p>
+                  <div className="space-y-2">
+                    {(favoriteLibrary.albums || []).slice(0, 4).map((album) => (
+                      <div key={album._id} className="flex items-center gap-3 bg-black/30 border border-white/10 rounded-2xl p-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAlbum(album)}
+                          className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0"
+                        >
+                          {album.coverUrl ? <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={16} className="text-yellow-400/40" /></div>}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold truncate">{album.title}</p>
+                          <p className="text-[10px] text-gray-400 uppercase truncate">{album.artist?.username || 'Artista'}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite('album', album._id)}
+                          className="w-8 h-8 rounded-lg border border-pink-300/40 text-pink-300 bg-pink-500/10 flex items-center justify-center"
+                        >
+                          <Heart size={14} fill="currentColor" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                  <p className="text-xs font-black text-pink-300 uppercase tracking-[0.2em] mb-4">Playlists</p>
+                  <div className="space-y-2">
+                    {(favoriteLibrary.playlists || []).slice(0, 4).map((playlist) => (
+                      <div key={playlist._id} className="flex items-center gap-3 bg-black/30 border border-white/10 rounded-2xl p-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPlaylist(playlist)}
+                          className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0"
+                        >
+                          {playlist.coverUrl ? <img src={playlist.coverUrl} alt={playlist.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={16} className="text-yellow-400/40" /></div>}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold truncate">{playlist.name}</p>
+                          <p className="text-[10px] text-gray-400 uppercase truncate">{playlist.songs?.length || 0} canciones</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite('playlist', playlist._id)}
+                          className="w-8 h-8 rounded-lg border border-pink-300/40 text-pink-300 bg-pink-500/10 flex items-center justify-center"
+                        >
+                          <Heart size={14} fill="currentColor" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">Todavía no guardaste favoritos. Usa el corazón en canciones, álbumes y playlists.</p>
+            )}
+          </section>
+
+          <section className="mb-14">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl md:text-3xl font-black tracking-tight">Continuar escuchando</h3>
+              <Clock3 size={18} className="text-yellow-300" />
+            </div>
+
+            {continueListening.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {continueListening.slice(0, 6).map((entry) => {
+                  const song = entry.song;
+                  const idx = allSongs.findIndex((item) => String(item._id) === String(song?._id));
+                  return (
+                    <button
+                      key={`${song?._id}-${entry.lastPlayedAt}`}
+                      onClick={() => {
+                        if (!song?._id) return;
+                        const queue = idx >= 0 ? allSongs : [song, ...allSongs.filter((item) => String(item._id) !== String(song._id))];
+                        const startIndex = idx >= 0 ? idx : 0;
+                        playSong(song, startIndex, {
+                          queue,
+                          mode: 'all',
+                          startAtSeconds: Number(entry.positionSeconds || 0),
+                        });
+                      }}
+                      className="text-left bg-white/5 border border-white/10 rounded-2xl p-4 hover:bg-white/10 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-black/40 flex-shrink-0">
+                          {song?.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={18} className="text-yellow-400/40" /></div>}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold truncate">{song?.title || 'Canción'}</p>
+                          <p className="text-[10px] text-gray-400 uppercase truncate">{song?.artist?.username || 'Artista'}</p>
+                        </div>
+                        <Play size={16} className="text-yellow-300" />
+                      </div>
+                      <div className="mt-3 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-yellow-400" style={{ width: `${Math.max(0, Math.min(100, Number(entry.progressPercent || 0)))}%` }} />
+                      </div>
+                      <p className="mt-2 text-[10px] text-gray-400 uppercase tracking-widest">{Math.max(0, Math.floor(Number(entry.positionSeconds || 0)))}s de {Math.max(0, Math.floor(Number(entry.durationSeconds || 0)))}s</p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">Cuando escuches canciones, aquí aparecerán para retomarlas desde donde te quedaste.</p>
+            )}
+          </section>
 
           <section className="mb-14">
             <div className="flex items-center justify-between mb-6">
@@ -1598,6 +1904,8 @@ function App() {
                       if (song.artist?._id) openArtistProfile(song.artist._id);
                     }}
                     onCollaboratorClick={(id) => openArtistProfile(id)}
+                    onToggleLike={(songId) => toggleFavorite('song', songId)}
+                    isLiked={likedSongSet.has(String(song._id))}
                   />
                 ))
               ) : (
@@ -1666,6 +1974,8 @@ function App() {
                           if (song.artist?._id) openArtistProfile(song.artist._id);
                         }}
                         onCollaboratorClick={(id) => openArtistProfile(id)}
+                        onToggleLike={(songId) => toggleFavorite('song', songId)}
+                        isLiked={likedSongSet.has(String(song._id))}
                       />
                     );
                   })
@@ -1827,6 +2137,8 @@ function App() {
                           if (song.artist?._id) openArtistProfile(song.artist._id);
                         }}
                         onCollaboratorClick={(id) => openArtistProfile(id)}
+                        onToggleLike={(songId) => toggleFavorite('song', songId)}
+                        isLiked={likedSongSet.has(String(song._id))}
                       />
                     );
                   })
@@ -2141,6 +2453,8 @@ function App() {
                           if (song.artist?._id) openArtistProfile(song.artist._id);
                         }}
                         onCollaboratorClick={(id) => openArtistProfile(id)}
+                        onToggleLike={(songId) => toggleFavorite('song', songId)}
+                        isLiked={likedSongSet.has(String(song._id))}
                       />
                     );
                   })
@@ -2681,6 +2995,8 @@ function App() {
           playSong(playableSong, safeIndex, { queue: normalizedPlaylistSongs, mode: 'playlist' });
         }}
         onOpenArtist={openArtistProfile}
+        isLiked={likedPlaylistSet.has(String(selectedPlaylist?._id || ''))}
+        onToggleLike={(playlistId) => toggleFavorite('playlist', playlistId)}
       />
 
       <AlbumDetailPanel
@@ -2698,6 +3014,8 @@ function App() {
         }}
         onOpenArtist={openArtistProfile}
         onShare={(albumId) => shareLink('album', albumId, 'el álbum')}
+        isLiked={likedAlbumSet.has(String(selectedAlbum?._id || ''))}
+        onToggleLike={(albumId) => toggleFavorite('album', albumId)}
         onEdit={(album) => {
           setAlbumToEdit(album);
           setIsAlbumModalOpen(true);
@@ -2725,7 +3043,7 @@ function App() {
   );
 }
 
-const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick }) => (
+const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick, onToggleLike, isLiked }) => (
   <div
     className="group flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-3 py-2 hover:bg-white/10 transition-all cursor-pointer"
     onClick={onRowClick}
@@ -2769,13 +3087,28 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick 
       </div>
     </div>
 
-    <button
-      onClick={onPlay}
-      aria-label={`Reproducir ${song.title}`}
-      className="w-12 h-12 rounded-xl bg-white/20 hover:bg-white text-white hover:text-black flex items-center justify-center transition-all"
-    >
-      <Play fill="currentColor" size={20} className="ml-0.5" />
-    </button>
+    <div className="flex items-center gap-2">
+      {onToggleLike && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleLike(song._id);
+          }}
+          aria-label={isLiked ? `Quitar ${song.title} de favoritos` : `Agregar ${song.title} a favoritos`}
+          className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all ${isLiked ? 'bg-pink-500/20 border-pink-400 text-pink-300' : 'bg-white/10 border-white/10 text-gray-300 hover:text-pink-300 hover:border-pink-300/40'}`}
+        >
+          <Heart size={16} fill={isLiked ? 'currentColor' : 'none'} />
+        </button>
+      )}
+      <button
+        onClick={onPlay}
+        aria-label={`Reproducir ${song.title}`}
+        className="w-12 h-12 rounded-xl bg-white/20 hover:bg-white text-white hover:text-black flex items-center justify-center transition-all"
+      >
+        <Play fill="currentColor" size={20} className="ml-0.5" />
+      </button>
+    </div>
   </div>
 );
 
@@ -2941,7 +3274,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
   );
 };
 
-const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) => {
+const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist, isLiked, onToggleLike }) => {
   const [panelGradient, setPanelGradient] = useState(getRandomAlbumGradient());
   useEffect(() => {
     if (playlist) {
@@ -2969,6 +3302,13 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
             <h2 className="text-5xl md:text-7xl font-black tracking-tight">{playlist.name}</h2>
             <p className="mt-3 text-gray-200 text-lg">{playlist.description || 'Playlist oficial de RTN Music'}</p>
             <p className="mt-4 text-white/70 font-semibold">{playlist.songs?.length || 0} canciones</p>
+            <button
+              type="button"
+              onClick={() => onToggleLike && onToggleLike(playlist._id)}
+              className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${isLiked ? 'border-pink-300/50 bg-pink-500/15 text-pink-200' : 'border-white/15 bg-white/10 text-white hover:border-pink-300/40 hover:text-pink-200'}`}
+            >
+              <Heart size={14} fill={isLiked ? 'currentColor' : 'none'} /> {isLiked ? 'En favoritos' : 'Guardar'}
+            </button>
           </div>
           <button onClick={onClose} className="self-start md:self-auto p-3 rounded-xl bg-black/30 hover:bg-black/50 transition"><X size={20} /></button>
         </div>
@@ -3001,7 +3341,7 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
   );
 };
 
-const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onShare, onEdit, onDelete }) => {
+const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onShare, isLiked, onToggleLike, onEdit, onDelete }) => {
   const [panelGradient, setPanelGradient] = useState(getRandomAlbumGradient());
   useEffect(() => {
     if (album) {
@@ -3037,6 +3377,13 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onSh
               {album.artist?.username || 'Artista'}
             </button>
             <p className="mt-2 text-white/70 font-semibold">{album.songs?.length || 0} canciones • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
+            <button
+              type="button"
+              onClick={() => onToggleLike && onToggleLike(album._id)}
+              className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${isLiked ? 'border-pink-300/50 bg-pink-500/15 text-pink-200' : 'border-white/15 bg-white/10 text-white hover:border-pink-300/40 hover:text-pink-200'}`}
+            >
+              <Heart size={14} fill={isLiked ? 'currentColor' : 'none'} /> {isLiked ? 'En favoritos' : 'Guardar'}
+            </button>
             {isOwner && (
               <div className="flex gap-3 mt-4">
                 <button

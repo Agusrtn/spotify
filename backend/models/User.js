@@ -62,6 +62,45 @@ const UserSchema = new mongoose.Schema({
     playlists: [{ 
         type: mongoose.Schema.Types.ObjectId, 
         ref: 'Playlist' 
+    }],
+    likedSongs: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Song'
+    }],
+    likedAlbums: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Album'
+    }],
+    likedPlaylists: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Playlist'
+    }],
+    listeningHistory: [{
+        song: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Song',
+            required: true
+        },
+        lastPositionSeconds: {
+            type: Number,
+            default: 0
+        },
+        durationSeconds: {
+            type: Number,
+            default: 0
+        },
+        totalListenedSeconds: {
+            type: Number,
+            default: 0
+        },
+        completedCount: {
+            type: Number,
+            default: 0
+        },
+        lastPlayedAt: {
+            type: Date,
+            default: Date.now
+        }
     }]
 }, { timestamps: true });
 
