@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { API_URL } from './config';
-import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass } from 'lucide-react';
+import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Album gradient colors (similar to Spotify album art)
 const ALBUM_GRADIENTS = [
@@ -122,6 +122,9 @@ function App() {
   const [continueListening, setContinueListening] = useState([]);
   const [discoveryFeed, setDiscoveryFeed] = useState({ forYouSongs: [], trendingSongs: [], freshAlbums: [], playlists: [] });
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [homeVisibleCards, setHomeVisibleCards] = useState(3);
+  const [featuredCarouselIndex, setFeaturedCarouselIndex] = useState(0);
+  const [albumsCarouselIndex, setAlbumsCarouselIndex] = useState(0);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [, setCurrentIndex] = useState(0);
@@ -176,6 +179,20 @@ function App() {
   const likedSongSet = useMemo(() => new Set((likedSongIds || []).map((id) => String(id))), [likedSongIds]);
   const likedAlbumSet = useMemo(() => new Set((likedAlbumIds || []).map((id) => String(id))), [likedAlbumIds]);
   const likedPlaylistSet = useMemo(() => new Set((likedPlaylistIds || []).map((id) => String(id))), [likedPlaylistIds]);
+  const featuredPlaylists = useMemo(
+    () => playlists.filter((playlist) => playlist.isDefault),
+    [playlists]
+  );
+  const maxFeaturedIndex = Math.max(0, featuredPlaylists.length - homeVisibleCards);
+  const maxAlbumsIndex = Math.max(0, albums.length - homeVisibleCards);
+  const visibleFeaturedPlaylists = useMemo(
+    () => featuredPlaylists.slice(featuredCarouselIndex, featuredCarouselIndex + homeVisibleCards),
+    [featuredPlaylists, featuredCarouselIndex, homeVisibleCards]
+  );
+  const visibleAlbums = useMemo(
+    () => albums.slice(albumsCarouselIndex, albumsCarouselIndex + homeVisibleCards),
+    [albums, albumsCarouselIndex, homeVisibleCards]
+  );
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
@@ -746,6 +763,28 @@ function App() {
       window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     }
   }, [authToken]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleResize = () => {
+      if (window.innerWidth >= 1280) setHomeVisibleCards(3);
+      else if (window.innerWidth >= 768) setHomeVisibleCards(2);
+      else setHomeVisibleCards(1);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    setFeaturedCarouselIndex((prev) => Math.min(prev, maxFeaturedIndex));
+  }, [maxFeaturedIndex]);
+
+  useEffect(() => {
+    setAlbumsCarouselIndex((prev) => Math.min(prev, maxAlbumsIndex));
+  }, [maxAlbumsIndex]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -1976,11 +2015,34 @@ function App() {
           <section className="mb-10 md:mb-14">
             <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
               <h3 className="text-xl md:text-3xl font-black tracking-tight">Especialmente para ti</h3>
-              <span className="text-xs md:text-sm text-gray-400 font-bold">Mostrar todos</span>
+              {featuredPlaylists.length > homeVisibleCards ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFeaturedCarouselIndex((prev) => Math.max(0, prev - 1))}
+                    disabled={featuredCarouselIndex === 0}
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Anterior playlists"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFeaturedCarouselIndex((prev) => Math.min(maxFeaturedIndex, prev + 1))}
+                    disabled={featuredCarouselIndex >= maxFeaturedIndex}
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Siguiente playlists"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs md:text-sm text-gray-400 font-bold">{featuredPlaylists.length} visibles</span>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
-              {playlists.filter((playlist) => playlist.isDefault).slice(0, 4).map((playlist) => (
+            <div className="grid gap-4 md:gap-6" style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}>
+              {visibleFeaturedPlaylists.map((playlist) => (
                 <button
                   key={playlist._id}
                   onClick={() => setSelectedPlaylist(playlist)}
@@ -2009,12 +2071,35 @@ function App() {
           <section className="mb-10 md:mb-14">
             <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
               <h3 className="text-xl md:text-3xl font-black tracking-tight">Álbumes</h3>
-              <span className="text-xs md:text-sm text-gray-400 font-bold">Mostrar todos</span>
+              {albums.length > homeVisibleCards ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAlbumsCarouselIndex((prev) => Math.max(0, prev - 1))}
+                    disabled={albumsCarouselIndex === 0}
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Anterior álbumes"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAlbumsCarouselIndex((prev) => Math.min(maxAlbumsIndex, prev + 1))}
+                    disabled={albumsCarouselIndex >= maxAlbumsIndex}
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Siguiente álbumes"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs md:text-sm text-gray-400 font-bold">{albums.length} visibles</span>
+              )}
             </div>
 
             {albums.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
-                {albums.slice(0, 4).map((album) => (
+              <div className="grid gap-4 md:gap-6" style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}>
+                {visibleAlbums.map((album) => (
                   <button
                     key={album._id}
                     onClick={() => setSelectedAlbum(album)}
