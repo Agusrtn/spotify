@@ -57,6 +57,24 @@ const getAlbumThemeGradient = (album) => {
   return getAlbumGradient(album?._id || 'a');
 };
 
+const getRandomAlbumRedTheme = () => {
+  const hue = Math.random() < 0.5
+    ? 345 + Math.floor(Math.random() * 16)
+    : Math.floor(Math.random() * 13);
+  const rowOffset = Math.floor(Math.random() * 2);
+
+  return {
+    topLight: `hsl(${hue} 90% 56%)`,
+    topDark: `hsl(${hue} 82% 44%)`,
+    bottomLight: `hsl(${hue} 72% 32%)`,
+    bottomDark: `hsl(${hue} 68% 18%)`,
+    rowLight: `hsla(${hue}, 72%, 44%, 0.22)`,
+    rowDark: `hsla(${hue}, 70%, 30%, 0.28)`,
+    border: `hsla(${hue}, 80%, 72%, 0.12)`,
+    rowOffset,
+  };
+};
+
 const AUTH_USER_STORAGE_KEY = 'rtnmusic.auth.user';
 const AUTH_TOKEN_STORAGE_KEY = 'rtnmusic.auth.token';
 
@@ -2729,14 +2747,19 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
 };
 
 const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onShare, onEdit, onDelete }) => {
+  const [panelTheme] = useState(() => getRandomAlbumRedTheme());
   if (!album) return null;
 
-  const gradient = getAlbumThemeGradient(album);
   const isOwner = user && (String(user._id) === String(album.artist?._id) || user.role === 'admin');
 
   return (
     <div className="fixed inset-0 z-[105] bg-black/85 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
-      <div className={`max-w-6xl mx-auto bg-gradient-to-b ${gradient} rounded-3xl border border-white/10 overflow-hidden`}>
+      <div
+        className="max-w-6xl mx-auto rounded-3xl border border-white/10 overflow-hidden"
+        style={{
+          background: `linear-gradient(180deg, ${panelTheme.topLight} 0%, ${panelTheme.topDark} 36%, ${panelTheme.bottomLight} 36%, ${panelTheme.bottomDark} 100%)`,
+        }}
+      >
         <div className="p-6 md:p-10 flex flex-col md:flex-row gap-6 items-end">
           <div className="w-48 h-48 md:w-64 md:h-64 rounded-2xl overflow-hidden bg-black/30 border border-white/10">
             {album.coverUrl ? (
@@ -2786,7 +2809,14 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onSh
 
         <div className="border-t border-white/10 px-6 md:px-10 py-6 bg-black/40 space-y-3">
           {album.songs?.length ? album.songs.map((song, index) => (
-            <div key={song._id} className="flex items-center gap-3 py-3 border-b border-white/5">
+            <div
+              key={song._id}
+              className="flex items-center gap-3 py-3 border-b"
+              style={{
+                backgroundColor: ((index + panelTheme.rowOffset) % 2 === 0) ? panelTheme.rowLight : panelTheme.rowDark,
+                borderBottomColor: panelTheme.border,
+              }}
+            >
               <span className="hidden md:block text-white/50 font-bold w-7 text-center flex-shrink-0">{index + 1}</span>
               <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
                 {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={20} className="text-white/40" /></div>}
