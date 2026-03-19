@@ -191,14 +191,24 @@ function App() {
     const map = new Map();
     allSongs.forEach((song) => {
       const artist = song?.artist;
-      if (artist?._id && !map.has(String(artist._id))) {
-        map.set(String(artist._id), artist);
+      const artistId = String(artist?._id || '');
+      if (!artistId) return;
+      const existing = map.get(artistId);
+      if (!existing) {
+        map.set(artistId, artist);
+      } else if (!existing.profilePic && artist?.profilePic) {
+        map.set(artistId, { ...existing, profilePic: artist.profilePic });
       }
     });
     albums.forEach((album) => {
       const artist = album?.artist;
-      if (artist?._id && !map.has(String(artist._id))) {
-        map.set(String(artist._id), artist);
+      const artistId = String(artist?._id || '');
+      if (!artistId) return;
+      const existing = map.get(artistId);
+      if (!existing) {
+        map.set(artistId, artist);
+      } else if (!existing.profilePic && artist?.profilePic) {
+        map.set(artistId, { ...existing, profilePic: artist.profilePic });
       }
     });
     return Array.from(map.values());
@@ -2246,28 +2256,19 @@ function App() {
                 </div>
               ) : null}
             </div>
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {visibleCrewSongs.length > 0 ? (
                 visibleCrewSongs.map((song) => {
                   const idx = allSongs.findIndex((item) => String(item._id) === String(song._id));
                   return (
-                  <SongRow
-                    key={song._id}
-                    song={song}
-                    onRowClick={() => openSongDetail(song)}
-                    onPlay={(e) => {
-                      e.stopPropagation();
-                      playSong(song, idx >= 0 ? idx : 0);
-                    }}
-                    onArtistClick={(e) => {
-                      e.stopPropagation();
-                      if (song.artist?._id) openArtistProfile(song.artist._id);
-                    }}
-                    onCollaboratorClick={(id) => openArtistProfile(id)}
-                    onToggleLike={(songId) => toggleFavorite('song', songId)}
-                    isLiked={likedSongSet.has(String(song._id))}
-                  />
-                );
+                    <CrewSongCard
+                      key={song._id}
+                      song={song}
+                      onOpen={() => openSongDetail(song)}
+                      onPlay={() => playSong(song, idx >= 0 ? idx : 0)}
+                      onOpenArtist={(artistId) => openArtistProfile(artistId)}
+                    />
+                  );
                 })
               ) : (
                 <p className="text-gray-500 text-sm">No hay canciones publicadas aun.</p>
@@ -3470,6 +3471,49 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick,
         <Play fill="currentColor" size={20} className="ml-0.5" />
       </button>
     </div>
+  </div>
+);
+
+const CrewSongCard = ({ song, onOpen, onPlay, onOpenArtist }) => (
+  <div
+    className="group flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-3 py-2 hover:bg-white/10 transition-all cursor-pointer"
+    onClick={onOpen}
+  >
+    <div className="w-9 h-9 rounded-lg overflow-hidden bg-black/50 flex-shrink-0">
+      {song.coverUrl ? (
+        <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          <Disc className="text-yellow-400/40" size={14} />
+        </div>
+      )}
+    </div>
+
+    <div className="min-w-0 flex-1">
+      <p className="text-[11px] font-black uppercase italic truncate">{song.title}</p>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (song.artist?._id) onOpenArtist(song.artist._id);
+        }}
+        className="text-[9px] text-yellow-300/90 font-bold uppercase tracking-widest truncate"
+      >
+        {song.artist?.username || 'Artista'}
+      </button>
+    </div>
+
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onPlay();
+      }}
+      className="w-8 h-8 rounded-lg border border-white/15 bg-white/10 hover:bg-white/20 flex items-center justify-center"
+      aria-label={`Reproducir ${song.title}`}
+    >
+      <Play fill="currentColor" size={12} className="ml-[1px]" />
+    </button>
   </div>
 );
 

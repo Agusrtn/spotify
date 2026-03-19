@@ -516,7 +516,7 @@ app.get('/songs', async (req, res) => {
     }
 
     const songs = await Song.find({ artist: artistId })
-      .populate('artist', 'username')
+      .populate('artist', 'username _id profilePic role')
       .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
 
@@ -530,7 +530,7 @@ app.get('/songs', async (req, res) => {
 app.get('/all-songs', async (req, res) => {
   try {
     const songs = await Song.find()
-      .populate('artist', 'username _id')
+      .populate('artist', 'username _id profilePic role')
       .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
 
