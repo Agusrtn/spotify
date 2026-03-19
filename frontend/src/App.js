@@ -3648,7 +3648,7 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist, isLi
           <button onClick={onClose} className="self-start md:self-auto p-3 rounded-xl bg-black/30 hover:bg-black/50 transition"><X size={20} /></button>
         </div>
 
-        <div className="border-t border-white/10 px-6 md:px-10 py-6 bg-black/20 space-y-3">
+        <div className="border-t border-white/10 px-6 md:px-10 py-6 pb-32 md:pb-40 bg-black/20 space-y-3">
           {playlist.songs?.length ? playlist.songs.map((song, index) => (
             <div key={song._id} className="flex items-center gap-3 py-3 border-b border-white/5">
               <span className="hidden md:block text-gray-500 font-bold w-7 text-center flex-shrink-0">{index + 1}</span>
@@ -3745,7 +3745,7 @@ const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onSh
           <button onClick={onClose} className="self-start md:self-auto p-3 rounded-xl bg-black/30 hover:bg-black/50 transition"><X size={20} /></button>
         </div>
 
-        <div className="border-t border-white/10 px-6 md:px-10 py-6 bg-black/40 space-y-3">
+        <div className="border-t border-white/10 px-6 md:px-10 py-6 pb-32 md:pb-40 bg-black/40 space-y-3">
           {album.songs?.length ? album.songs.map((song, index) => (
             <div key={song._id} className="flex items-center gap-3 py-3 border-b border-white/5">
               <span className="hidden md:block text-white/50 font-bold w-7 text-center flex-shrink-0">{index + 1}</span>
