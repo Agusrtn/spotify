@@ -2414,9 +2414,14 @@ function App() {
       <PlaylistDetailPanel
         playlist={selectedPlaylist}
         onClose={() => setSelectedPlaylist(null)}
-        onPlaySong={(song) => {
-          const idx = allSongs.findIndex((item) => item._id === song._id);
-          playSong(song, idx >= 0 ? idx : 0);
+        onPlaySong={(song, playlistIndex, playlistSongs) => {
+          const normalizedPlaylistSongs = (playlistSongs || []).map((playlistSong) => {
+            const idx = allSongs.findIndex((item) => item._id === playlistSong._id);
+            return idx >= 0 ? allSongs[idx] : playlistSong;
+          });
+          const safeIndex = playlistIndex >= 0 ? playlistIndex : 0;
+          const playableSong = normalizedPlaylistSongs[safeIndex] || song;
+          playSong(playableSong, safeIndex, { queue: normalizedPlaylistSongs, mode: 'playlist' });
         }}
         onOpenArtist={openArtistProfile}
       />
@@ -2724,9 +2729,12 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
                   {song.artist?.username || 'Artista'}
                 </button>
               </div>
-              <button onClick={() => onPlaySong(song)} className="p-2 md:px-3 md:py-2 rounded-xl bg-white/10 hover:bg-white/20 flex-shrink-0 flex items-center justify-center">
-                <Play size={16} fill="white" className="md:hidden" />
-                <span className="hidden md:inline text-xs font-bold uppercase">Reproducir</span>
+              <button
+                onClick={() => onPlaySong(song, index, playlist.songs || [])}
+                className="w-12 h-12 rounded-xl bg-white/15 hover:bg-white/25 border border-white/15 flex-shrink-0 flex items-center justify-center transition-all"
+                aria-label="Reproducir canción"
+              >
+                <Play size={18} fill="white" className="text-white ml-[2px]" />
               </button>
               <span className="hidden md:block text-right text-gray-500 text-sm flex-shrink-0">{song.audioUrl ? 'MP3' : '--'}</span>
             </div>
