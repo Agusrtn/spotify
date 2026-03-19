@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import { API_URL } from './config';
-import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3 } from 'lucide-react';
+import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass } from 'lucide-react';
 
 // Album gradient colors (similar to Spotify album art)
 const ALBUM_GRADIENTS = [
@@ -120,6 +120,8 @@ function App() {
   const [likedPlaylistIds, setLikedPlaylistIds] = useState([]);
   const [favoriteLibrary, setFavoriteLibrary] = useState({ songs: [], albums: [], playlists: [] });
   const [continueListening, setContinueListening] = useState([]);
+  const [discoveryFeed, setDiscoveryFeed] = useState({ forYouSongs: [], trendingSongs: [], freshAlbums: [], playlists: [] });
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [, setCurrentIndex] = useState(0);
@@ -432,6 +434,28 @@ function App() {
       setContinueListening(Array.isArray(data.continueListening) ? data.continueListening : []);
     } catch (err) {
       console.error('Error fetching user library:', err);
+    }
+  };
+
+  const fetchDiscoveryFeed = async (targetUserId = user?._id) => {
+    if (!targetUserId || !user?._id) return;
+    setDiscoveryLoading(true);
+    try {
+      const params = new URLSearchParams({ userId: targetUserId, requesterId: user._id });
+      const res = await fetch(`${API_URL}/discovery-feed?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+
+      setDiscoveryFeed({
+        forYouSongs: Array.isArray(data.forYouSongs) ? data.forYouSongs : [],
+        trendingSongs: Array.isArray(data.trendingSongs) ? data.trendingSongs : [],
+        freshAlbums: Array.isArray(data.freshAlbums) ? data.freshAlbums : [],
+        playlists: Array.isArray(data.playlists) ? data.playlists : [],
+      });
+    } catch (err) {
+      console.error('Error fetching discovery feed:', err);
+    } finally {
+      setDiscoveryLoading(false);
     }
   };
 
@@ -790,9 +814,19 @@ function App() {
     if (user?._id) {
       fetchUserPlaylists();
       fetchUserLibrary(user._id);
+      fetchDiscoveryFeed(user._id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (!user?._id) return;
+    const intervalId = setInterval(() => {
+      fetchDiscoveryFeed(user._id);
+    }, 30 * 1000);
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id]);
 
   useEffect(() => {
     if (view === 'artist' && artistProfile?.artist?._id) {
@@ -1665,6 +1699,125 @@ function App() {
           <h1 className="text-4xl md:text-7xl font-black mb-4 md:mb-8 tracking-tighter uppercase italic">
             EXPLORA EL <span className="text-yellow-400 font-black">SONIDO</span>
           </h1>
+
+          <section className="mb-14">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl md:text-3xl font-black tracking-tight">Discovery Feed</h3>
+              <button
+                type="button"
+                onClick={() => fetchDiscoveryFeed(user._id)}
+                className="inline-flex items-center gap-2 text-sm text-yellow-300 font-bold"
+              >
+                <Compass size={16} /> Refrescar
+              </button>
+            </div>
+
+            {discoveryLoading ? (
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-gray-400">Cargando discovery...</div>
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                  <p className="text-[10px] font-black text-yellow-300 uppercase tracking-[0.2em] mb-3">Para ti</p>
+                  <div className="space-y-2">
+                    {(discoveryFeed.forYouSongs || []).slice(0, 5).map((song) => {
+                      const idx = allSongs.findIndex((item) => String(item._id) === String(song._id));
+                      return (
+                        <button
+                          key={song._id}
+                          type="button"
+                          onClick={() => {
+                            const queue = idx >= 0 ? allSongs : [song, ...allSongs.filter((item) => String(item._id) !== String(song._id))];
+                            playSong(song, idx >= 0 ? idx : 0, { queue, mode: 'all' });
+                          }}
+                          className="w-full flex items-center gap-3 text-left p-2 rounded-xl hover:bg-white/10 transition-all"
+                        >
+                          <div className="w-9 h-9 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                            {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={14} className="text-yellow-400/40" /></div>}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold truncate">{song.title}</p>
+                            <p className="text-[10px] text-gray-400 uppercase truncate">{song.artist?.username || 'Artista'}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                  <p className="text-[10px] font-black text-yellow-300 uppercase tracking-[0.2em] mb-3">Trending</p>
+                  <div className="space-y-2">
+                    {(discoveryFeed.trendingSongs || []).slice(0, 5).map((song) => {
+                      const idx = allSongs.findIndex((item) => String(item._id) === String(song._id));
+                      return (
+                        <button
+                          key={song._id}
+                          type="button"
+                          onClick={() => {
+                            const queue = idx >= 0 ? allSongs : [song, ...allSongs.filter((item) => String(item._id) !== String(song._id))];
+                            playSong(song, idx >= 0 ? idx : 0, { queue, mode: 'all' });
+                          }}
+                          className="w-full flex items-center gap-3 text-left p-2 rounded-xl hover:bg-white/10 transition-all"
+                        >
+                          <div className="w-9 h-9 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                            {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={14} className="text-yellow-400/40" /></div>}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold truncate">{song.title}</p>
+                            <p className="text-[10px] text-gray-400 uppercase truncate">{song.artist?.username || 'Artista'}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                  <p className="text-[10px] font-black text-yellow-300 uppercase tracking-[0.2em] mb-3">Álbumes nuevos</p>
+                  <div className="space-y-2">
+                    {(discoveryFeed.freshAlbums || []).slice(0, 4).map((album) => (
+                      <button
+                        key={album._id}
+                        type="button"
+                        onClick={() => setSelectedAlbum(album)}
+                        className="w-full flex items-center gap-3 text-left p-2 rounded-xl hover:bg-white/10 transition-all"
+                      >
+                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                          {album.coverUrl ? <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={14} className="text-yellow-400/40" /></div>}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold truncate">{album.title}</p>
+                          <p className="text-[10px] text-gray-400 uppercase truncate">{album.artist?.username || 'Artista'}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                  <p className="text-[10px] font-black text-yellow-300 uppercase tracking-[0.2em] mb-3">Playlists recomendadas</p>
+                  <div className="space-y-2">
+                    {(discoveryFeed.playlists || []).slice(0, 4).map((playlist) => (
+                      <button
+                        key={playlist._id}
+                        type="button"
+                        onClick={() => setSelectedPlaylist(playlist)}
+                        className="w-full flex items-center gap-3 text-left p-2 rounded-xl hover:bg-white/10 transition-all"
+                      >
+                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                          {playlist.coverUrl ? <img src={playlist.coverUrl} alt={playlist.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={14} className="text-yellow-400/40" /></div>}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold truncate">{playlist.name}</p>
+                          <p className="text-[10px] text-gray-400 uppercase truncate">{playlist.songs?.length || 0} canciones</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
 
           <section className="mb-14">
             <div className="flex items-center justify-between mb-6">

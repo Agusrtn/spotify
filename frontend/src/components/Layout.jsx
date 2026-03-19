@@ -1,5 +1,5 @@
-import React from 'react';
-import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell, FileText, X } from 'lucide-react';
 import Aurora from './Aurora';
 
 const Layout = ({ 
@@ -25,6 +25,22 @@ const Layout = ({
   unreadNotifications,
   onToggleNotifications
 }) => {
+  const [showLyrics, setShowLyrics] = useState(false);
+
+  const lyricsLines = useMemo(() => {
+    const rawLyrics = String(currentSong?.lyrics || '').trim();
+    if (!rawLyrics) return [];
+    return rawLyrics
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }, [currentSong?.lyrics]);
+
+  const activeLyricIndex = useMemo(() => {
+    if (!lyricsLines.length || !duration || duration <= 0) return -1;
+    const ratio = Math.max(0, Math.min(1, currentTime / duration));
+    return Math.min(lyricsLines.length - 1, Math.floor(ratio * lyricsLines.length));
+  }, [lyricsLines, duration, currentTime]);
 
   const formatTime = (time) => {
     if (!time || isNaN(time)) return '0:00';
@@ -230,6 +246,14 @@ const Layout = ({
         </div>
 
         <div className="flex items-center justify-end gap-6 w-1/3">
+          <button
+            type="button"
+            onClick={() => setShowLyrics((prev) => !prev)}
+            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${showLyrics ? 'border-yellow-300 text-yellow-300 bg-yellow-400/10' : 'border-white/10 text-gray-500 hover:text-yellow-300 hover:border-yellow-300/30'}`}
+            aria-label="Mostrar letras"
+          >
+            <FileText size={16} />
+          </button>
           <LayoutGrid size={18} className="text-gray-600 hover:text-yellow-400 transition cursor-pointer" />
           <div className="flex items-center gap-3">
             <Volume2 size={18} className="text-gray-600" />
@@ -270,6 +294,14 @@ const Layout = ({
           >
             {isPlaying ? <Pause fill="black" size={16} /> : <Play fill="black" size={16} className="ml-0.5" />}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowLyrics((prev) => !prev)}
+            className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 ${showLyrics ? 'border-yellow-300 text-yellow-300 bg-yellow-400/10' : 'border-white/20 text-gray-300'}`}
+            aria-label="Mostrar letras"
+          >
+            <FileText size={15} />
+          </button>
           <button onClick={nextSong} className="text-gray-500 p-1 active:text-white">
             <SkipForward size={18} />
           </button>
@@ -284,6 +316,35 @@ const Layout = ({
           />
         </div>
       </div>
+
+      {showLyrics && (
+        <div className="fixed z-[60] left-4 right-4 md:left-72 md:right-8 bottom-24 md:bottom-36 bg-black/90 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-yellow-300">Lyrics</p>
+            <button
+              type="button"
+              onClick={() => setShowLyrics(false)}
+              className="w-8 h-8 rounded-lg border border-white/10 text-gray-300 hover:text-white flex items-center justify-center"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div className="max-h-[45vh] overflow-y-auto px-4 py-4 space-y-2">
+            {lyricsLines.length ? (
+              lyricsLines.map((line, index) => (
+                <p
+                  key={`${line}-${index}`}
+                  className={`text-sm md:text-base leading-relaxed transition-all ${index === activeLyricIndex ? 'text-yellow-300 font-bold' : 'text-gray-300'}`}
+                >
+                  {line}
+                </p>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500">Esta canción aún no tiene letra cargada.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* NAV INFERIOR MÓVIL */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-16 bg-black/95 backdrop-blur-xl border-t border-white/5 flex items-center">

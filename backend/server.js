@@ -1029,6 +1029,109 @@ app.get('/search-all', async (req, res) => {
   }
 });
 
+app.get('/discovery-feed', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const requesterId = req.query.requesterId || userId;
+    if (!userId || !requesterId) {
+      return res.status(400).json({ error: 'Faltan userId/requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester no encontrado' });
+    }
+
+    if (String(requester._id) !== String(userId) && requester.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para ver este feed' });
+    }
+
+    const user = await User.findById(userId)
+      .select('likedSongs likedAlbums likedPlaylists listeningHistory');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const likedSongIds = (user.likedSongs || []).map((id) => String(id));
+    const likedAlbumIds = (user.likedAlbums || []).map((id) => String(id));
+
+    const likedSongs = likedSongIds.length
+      ? await Song.find({ _id: { $in: likedSongIds } }).select('_id artist')
+      : [];
+    const likedAlbums = likedAlbumIds.length
+      ? await Album.find({ _id: { $in: likedAlbumIds } }).select('_id artist')
+      : [];
+
+    const historySongIds = (user.listeningHistory || [])
+      .map((entry) => String(entry.song || ''))
+      .filter(Boolean);
+    const historySongs = historySongIds.length
+      ? await Song.find({ _id: { $in: historySongIds } }).select('_id artist')
+      : [];
+
+    const preferredArtistIds = Array.from(new Set([
+      ...likedSongs.map((song) => String(song.artist)),
+      ...likedAlbums.map((album) => String(album.artist)),
+      ...historySongs.map((song) => String(song.artist)),
+    ].filter(Boolean)));
+
+    let forYouSongs = [];
+    if (preferredArtistIds.length) {
+      forYouSongs = await Song.find({
+        artist: { $in: preferredArtistIds },
+      })
+        .populate('artist', 'username _id profilePic bio')
+        .populate('collaborators.userId', 'username _id')
+        .sort({ listenSeconds: -1, playCount: -1, createdAt: -1 })
+        .limit(20);
+    }
+
+    if (forYouSongs.length < 10) {
+      const excludeIds = new Set(forYouSongs.map((song) => String(song._id)));
+      const fallbackSongs = await Song.find()
+        .populate('artist', 'username _id profilePic bio')
+        .populate('collaborators.userId', 'username _id')
+        .sort({ createdAt: -1 })
+        .limit(40);
+      fallbackSongs.forEach((song) => {
+        if (forYouSongs.length >= 10) return;
+        const songId = String(song._id);
+        if (excludeIds.has(songId)) return;
+        excludeIds.add(songId);
+        forYouSongs.push(song);
+      });
+    }
+
+    const trendingSongs = await Song.find()
+      .populate('artist', 'username _id profilePic bio')
+      .populate('collaborators.userId', 'username _id')
+      .sort({ listenSeconds: -1, playCount: -1, createdAt: -1 })
+      .limit(10);
+
+    const freshAlbums = await Album.find()
+      .populate('artist', 'username _id profilePic bio')
+      .populate('songs', 'title artist coverUrl audioUrl')
+      .sort({ createdAt: -1 })
+      .limit(8);
+
+    const discoveryPlaylists = await Playlist.find({ isPublic: true })
+      .populate('creator', 'username _id profilePic')
+      .populate({ path: 'songs', populate: { path: 'artist', select: 'username _id profilePic' } })
+      .sort({ isDefault: -1, createdAt: -1 })
+      .limit(8);
+
+    return res.json({
+      forYouSongs: forYouSongs.slice(0, 10),
+      trendingSongs,
+      freshAlbums,
+      playlists: discoveryPlaylists,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener discovery feed' });
+  }
+});
+
 app.get('/artists/:artistId', async (req, res) => {
   try {
     const { artistId } = req.params;
