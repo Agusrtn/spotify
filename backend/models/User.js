@@ -20,9 +20,38 @@ const UserSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    instagramLinked: {
+        type: Boolean,
+        default: false
+    },
+    instagramUserId: {
+        type: String,
+        default: ''
+    },
+    instagramAccessToken: {
+        type: String,
+        default: ''
+    },
+    instagramTokenExpiresAt: {
+        type: Date,
+        default: null
+    },
+    instagramLastSyncedAt: {
+        type: Date,
+        default: null
+    },
     instagramPosts: [{
         type: String,
         default: ''
+    }],
+    instagramFeed: [{
+        igMediaId: { type: String, default: '' },
+        caption: { type: String, default: '' },
+        mediaType: { type: String, default: '' },
+        mediaUrl: { type: String, default: '' },
+        thumbnailUrl: { type: String, default: '' },
+        permalink: { type: String, default: '' },
+        timestamp: { type: Date, default: null }
     }],
     profilePic: { 
         type: String, 

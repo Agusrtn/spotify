@@ -54,8 +54,6 @@ const getRandomAlbumGradient = () => {
 
 const INSTAGRAM_POST_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[A-Za-z0-9_-]+/i;
 
-const normalizeInstagramHandle = (handle = '') => String(handle).trim().replace(/^@+/, '');
-
 const normalizeInstagramPostUrl = (url = '') => {
   const trimmed = String(url).trim();
   if (!trimmed) return '';
@@ -141,9 +139,9 @@ function App() {
 
   const [settingsBio, setSettingsBio] = useState('');
   const [settingsInstagramHandle, setSettingsInstagramHandle] = useState('');
-  const [settingsInstagramPosts, setSettingsInstagramPosts] = useState(['', '', '']);
   const [settingsPic, setSettingsPic] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [instagramActionLoading, setInstagramActionLoading] = useState(false);
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [memberUsernameDrafts, setMemberUsernameDrafts] = useState({});
@@ -562,6 +560,48 @@ function App() {
   }, [allSongs, albums]);
 
   useEffect(() => {
+    if (!user?._id) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const igStatus = params.get('ig');
+    const requestedView = params.get('view');
+    if (!igStatus && !requestedView) return;
+
+    if (requestedView === 'ajustes') {
+      setView('ajustes');
+    }
+
+    if (igStatus === 'connected') {
+      showToast('Instagram conectado correctamente', 'success');
+      refreshOwnProfile(true);
+    } else if (igStatus === 'error') {
+      showToast('No se pudo conectar Instagram', 'error');
+    }
+
+    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+    window.history.replaceState({}, '', cleanUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id]);
+
+  useEffect(() => {
+    if (!user?._id || !user?.instagramLinked) return;
+    const intervalId = setInterval(() => {
+      refreshOwnProfile(true);
+    }, 60 * 1000);
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id, user?.instagramLinked]);
+
+  useEffect(() => {
+    if (view !== 'artist' || !artistProfile?.artist?._id || !artistProfile?.artist?.instagramLinked) return;
+    const intervalId = setInterval(() => {
+      openArtistProfile(artistProfile.artist._id);
+    }, 60 * 1000);
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, artistProfile?.artist?._id, artistProfile?.artist?.instagramLinked]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
 
     if (user) {
@@ -622,7 +662,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (user) setSettingsBio(user.bio || '');
+    if (user) {
+      setSettingsBio(user.bio || '');
+      setSettingsInstagramHandle(user.instagramHandle || '');
+    }
   }, [user]);
 
   useEffect(() => {
@@ -1074,8 +1117,6 @@ function App() {
     try {
       const formData = new FormData();
       formData.append('bio', settingsBio || '');
-      formData.append('instagramHandle', settingsInstagramHandle || '');
-      formData.append('instagramPosts', settingsInstagramPosts.filter(Boolean).join('\n'));
       if (settingsPic) formData.append('profilePic', settingsPic);
 
       const res = await fetch(`${API_URL}/users/${user._id}/profile`, {
@@ -1093,6 +1134,92 @@ function App() {
       alert('Error al actualizar perfil');
     } finally {
       setSettingsLoading(false);
+    }
+  };
+
+  const refreshOwnProfile = async (silent = false) => {
+    if (!user?._id) return;
+    try {
+      const res = await fetch(`${API_URL}/users/${user._id}/profile`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (!silent) alert(data.error || 'No se pudo refrescar el perfil');
+        return;
+      }
+      setUser(data.user);
+    } catch (err) {
+      console.error(err);
+      if (!silent) alert('Error al refrescar perfil');
+    }
+  };
+
+  const connectInstagram = async () => {
+    if (!user?._id) return;
+    setInstagramActionLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/users/${user._id}/instagram/connect-url?requesterId=${user._id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        alert(data.error || 'No se pudo iniciar conexión con Instagram');
+        return;
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      console.error(err);
+      alert('Error al conectar Instagram');
+    } finally {
+      setInstagramActionLoading(false);
+    }
+  };
+
+  const syncInstagramNow = async () => {
+    if (!user?._id) return;
+    setInstagramActionLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/users/${user._id}/instagram/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || 'No se pudo sincronizar Instagram');
+        return;
+      }
+      setUser(data.user);
+      showToast('Instagram sincronizado', 'success');
+    } catch (err) {
+      console.error(err);
+      alert('Error al sincronizar Instagram');
+    } finally {
+      setInstagramActionLoading(false);
+    }
+  };
+
+  const disconnectInstagram = async () => {
+    if (!user?._id) return;
+    const confirmed = await askConfirm('¿Desvincular Instagram de tu perfil?', 'Desvincular Instagram');
+    if (!confirmed) return;
+
+    setInstagramActionLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/users/${user._id}/instagram/disconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || 'No se pudo desvincular Instagram');
+        return;
+      }
+      await refreshOwnProfile(true);
+      showToast('Instagram desvinculado', 'success');
+    } catch (err) {
+      console.error(err);
+      alert('Error al desvincular Instagram');
+    } finally {
+      setInstagramActionLoading(false);
     }
   };
 
@@ -1929,9 +2056,12 @@ function App() {
                     ) : null}
                   </div>
 
-                  {artistProfile.artist.instagramPosts?.filter(Boolean).length ? (
+                  {(artistProfile.artist.instagramFeed?.length || artistProfile.artist.instagramPosts?.filter(Boolean).length) ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {artistProfile.artist.instagramPosts.filter(Boolean).map((postUrl, index) => (
+                      {(artistProfile.artist.instagramFeed?.length
+                        ? artistProfile.artist.instagramFeed.map((item) => item.permalink).filter(Boolean)
+                        : artistProfile.artist.instagramPosts.filter(Boolean)
+                      ).map((postUrl, index) => (
                         <div
                           key={`${postUrl}-${index}`}
                           className="rounded-2xl border border-pink-400/20 bg-gradient-to-br from-pink-500/20 via-orange-400/10 to-black/30 p-3 hover:border-pink-300/40 transition-all"
@@ -2424,29 +2554,44 @@ function App() {
               <>
                 <div>
                   <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Instagram vinculado</p>
-                  <input
-                    value={settingsInstagramHandle}
-                    onChange={(e) => setSettingsInstagramHandle(normalizeInstagramHandle(e.target.value))}
-                    className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
-                    placeholder="usuario_de_instagram"
-                  />
-                </div>
-
-                <div>
-                  <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Publicaciones recientes de Instagram</p>
-                  <div className="space-y-3">
-                    {settingsInstagramPosts.map((post, index) => (
-                      <input
-                        key={index}
-                        value={post}
-                        onChange={(e) => setSettingsInstagramPosts((prev) => prev.map((item, idx) => idx === index ? e.target.value : item))}
-                        className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
-                        placeholder={`https://www.instagram.com/p/... (${index + 1})`}
-                      />
-                    ))}
+                  {user.instagramLinked ? (
+                    <div className="space-y-3">
+                      <div className="w-full bg-black/40 p-4 rounded-2xl border border-white/10">
+                        <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Cuenta conectada</p>
+                        <p className="font-black text-lg text-pink-300">@{user.instagramHandle || settingsInstagramHandle || 'instagram'}</p>
+                        <p className="text-xs text-gray-500 mt-1">Sincronizado: {user.instagramLastSyncedAt ? new Date(user.instagramLastSyncedAt).toLocaleString() : 'pendiente'}</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={syncInstagramNow}
+                          disabled={instagramActionLoading}
+                          className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
+                        >
+                          {instagramActionLoading ? 'Sincronizando...' : 'Sincronizar ahora'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={disconnectInstagram}
+                          disabled={instagramActionLoading}
+                          className="px-4 py-3 rounded-xl bg-red-600/80 hover:bg-red-600 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
+                        >
+                          Desvincular
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={connectInstagram}
+                      disabled={instagramActionLoading}
+                      className="px-4 py-3 rounded-xl bg-pink-500/80 hover:bg-pink-500 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
+                    >
+                      {instagramActionLoading ? 'Conectando...' : 'Conectar Instagram'}
+                    </button>
+                  )}
+                  <p className="mt-2 text-xs text-gray-500">Las publicaciones se cargan automáticamente desde Instagram y se actualizan periódicamente.</p>
                   </div>
-                  <p className="mt-2 text-xs text-gray-500">Sin API oficial de Meta no puedo sacar las publicaciones automáticamente, así que aquí puedes pegar hasta 3 links recientes y se mostrarán en Mi Crew.</p>
-                </div>
               </>
             )}
 

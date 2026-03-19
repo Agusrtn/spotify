@@ -22,6 +22,126 @@ const Song = require('./models/Song');
 const Playlist = require('./models/Playlist');
 const Album = require('./models/Album');
 
+const IG_APP_ID = process.env.INSTAGRAM_APP_ID || '';
+const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || '';
+const IG_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || '';
+const IG_SCOPES = 'user_profile,user_media';
+const IG_SYNC_INTERVAL_MS = Number(process.env.IG_SYNC_INTERVAL_MS || 5 * 60 * 1000);
+
+const shouldSyncInstagram = (userDoc, maxAgeMs = 5 * 60 * 1000) => {
+  if (!userDoc?.instagramLinked || !userDoc?.instagramAccessToken) return false;
+  if (!userDoc.instagramLastSyncedAt) return true;
+  return (Date.now() - new Date(userDoc.instagramLastSyncedAt).getTime()) > maxAgeMs;
+};
+
+const fetchInstagramLongLivedToken = async (shortLivedToken) => {
+  const params = new URLSearchParams({
+    grant_type: 'ig_exchange_token',
+    client_secret: IG_APP_SECRET,
+    access_token: shortLivedToken,
+  });
+
+  const response = await fetch(`https://graph.instagram.com/access_token?${params.toString()}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) {
+    throw new Error(data.error?.message || 'No se pudo obtener token largo de Instagram');
+  }
+  return data;
+};
+
+const refreshInstagramLongLivedToken = async (token) => {
+  const params = new URLSearchParams({
+    grant_type: 'ig_refresh_token',
+    access_token: token,
+  });
+  const response = await fetch(`https://graph.instagram.com/refresh_access_token?${params.toString()}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) {
+    throw new Error(data.error?.message || 'No se pudo refrescar token de Instagram');
+  }
+  return data;
+};
+
+const fetchInstagramProfile = async (token) => {
+  const params = new URLSearchParams({
+    fields: 'id,username',
+    access_token: token,
+  });
+  const response = await fetch(`https://graph.instagram.com/me?${params.toString()}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.id) {
+    throw new Error(data.error?.message || 'No se pudo obtener perfil de Instagram');
+  }
+  return data;
+};
+
+const fetchInstagramMedia = async (token) => {
+  const params = new URLSearchParams({
+    fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp',
+    access_token: token,
+    limit: '9',
+  });
+  const response = await fetch(`https://graph.instagram.com/me/media?${params.toString()}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error?.message || 'No se pudo obtener publicaciones de Instagram');
+  }
+
+  const media = Array.isArray(data.data) ? data.data : [];
+  return media.map((item) => ({
+    igMediaId: String(item.id || ''),
+    caption: String(item.caption || ''),
+    mediaType: String(item.media_type || ''),
+    mediaUrl: String(item.media_url || ''),
+    thumbnailUrl: String(item.thumbnail_url || ''),
+    permalink: String(item.permalink || ''),
+    timestamp: item.timestamp ? new Date(item.timestamp) : null,
+  }));
+};
+
+const syncInstagramForUser = async (userDoc, { force = false } = {}) => {
+  if (!userDoc?.instagramLinked || !userDoc?.instagramAccessToken) return userDoc;
+  if (!force && !shouldSyncInstagram(userDoc)) return userDoc;
+
+  try {
+    if (userDoc.instagramTokenExpiresAt) {
+      const msToExpire = new Date(userDoc.instagramTokenExpiresAt).getTime() - Date.now();
+      if (msToExpire < 7 * 24 * 60 * 60 * 1000) {
+        const refreshed = await refreshInstagramLongLivedToken(userDoc.instagramAccessToken);
+        userDoc.instagramAccessToken = refreshed.access_token;
+        userDoc.instagramTokenExpiresAt = new Date(Date.now() + Number(refreshed.expires_in || 0) * 1000);
+      }
+    }
+
+    const profile = await fetchInstagramProfile(userDoc.instagramAccessToken);
+    const media = await fetchInstagramMedia(userDoc.instagramAccessToken);
+
+    userDoc.instagramLinked = true;
+    userDoc.instagramUserId = String(profile.id || userDoc.instagramUserId || '');
+    userDoc.instagramHandle = String(profile.username || userDoc.instagramHandle || '');
+    userDoc.instagramFeed = media;
+    userDoc.instagramPosts = media.map((item) => item.permalink).filter(Boolean).slice(0, 3);
+    userDoc.instagramLastSyncedAt = new Date();
+    await userDoc.save();
+    return userDoc;
+  } catch (error) {
+    console.error('Instagram sync error:', error.message);
+    return userDoc;
+  }
+};
+
+const runInstagramAutoSync = async () => {
+  try {
+    const users = await User.find({ instagramLinked: true, instagramAccessToken: { $ne: '' } }).limit(200);
+    for (const user of users) {
+      // eslint-disable-next-line no-await-in-loop
+      await syncInstagramForUser(user);
+    }
+  } catch (error) {
+    console.error('Instagram auto-sync error:', error.message);
+  }
+};
+
 // Conexión a MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ RTN conectado a MongoDB"))
@@ -269,8 +389,11 @@ app.post('/login', async (req, res) => {
         username: user.username,
         role: user.role,
         bio: user.bio,
+        instagramLinked: Boolean(user.instagramLinked),
         instagramHandle: user.instagramHandle,
         instagramPosts: user.instagramPosts || [],
+        instagramFeed: user.instagramFeed || [],
+        instagramLastSyncedAt: user.instagramLastSyncedAt || null,
         profilePic: user.profilePic,
       },
     });
@@ -824,10 +947,14 @@ app.get('/search-all', async (req, res) => {
 app.get('/artists/:artistId', async (req, res) => {
   try {
     const { artistId } = req.params;
-    const artist = await User.findById(artistId).select('_id username role bio profilePic instagramHandle instagramPosts');
+    const artist = await User.findById(artistId).select('_id username role bio profilePic instagramLinked instagramHandle instagramPosts instagramFeed instagramLastSyncedAt instagramAccessToken');
 
     if (!artist) {
       return res.status(404).json({ error: 'Artista no encontrado' });
+    }
+
+    if (artist.instagramLinked && artist.instagramAccessToken && shouldSyncInstagram(artist, 2 * 60 * 1000)) {
+      await syncInstagramForUser(artist, { force: true });
     }
 
     const songs = await Song.find({ artist: artistId })
@@ -840,7 +967,20 @@ app.get('/artists/:artistId', async (req, res) => {
       .populate('songs', 'title artist coverUrl audioUrl')
       .sort({ releaseDate: -1 });
 
-    return res.json({ artist, songs, albums });
+    const artistSafe = {
+      _id: artist._id,
+      username: artist.username,
+      role: artist.role,
+      bio: artist.bio,
+      profilePic: artist.profilePic,
+      instagramLinked: Boolean(artist.instagramLinked),
+      instagramHandle: artist.instagramHandle || '',
+      instagramPosts: artist.instagramPosts || [],
+      instagramFeed: artist.instagramFeed || [],
+      instagramLastSyncedAt: artist.instagramLastSyncedAt || null,
+    };
+
+    return res.json({ artist: artistSafe, songs, albums });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener perfil del artista' });
@@ -953,8 +1093,11 @@ app.put('/users/:userId/profile', (req, res) => {
           username: user.username,
           role: user.role,
           bio: user.bio,
+          instagramLinked: Boolean(user.instagramLinked),
           instagramHandle: user.instagramHandle,
           instagramPosts: user.instagramPosts || [],
+          instagramFeed: user.instagramFeed || [],
+          instagramLastSyncedAt: user.instagramLastSyncedAt || null,
           profilePic: user.profilePic,
         },
       });
@@ -963,6 +1106,215 @@ app.put('/users/:userId/profile', (req, res) => {
       return res.status(500).json({ error: 'Error al actualizar perfil' });
     }
   });
+});
+
+app.get('/users/:userId/profile', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).select('_id username role bio profilePic instagramLinked instagramHandle instagramPosts instagramFeed instagramLastSyncedAt');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    return res.json({
+      user: {
+        _id: user._id,
+        username: user.username,
+        role: user.role,
+        bio: user.bio,
+        profilePic: user.profilePic,
+        instagramLinked: Boolean(user.instagramLinked),
+        instagramHandle: user.instagramHandle || '',
+        instagramPosts: user.instagramPosts || [],
+        instagramFeed: user.instagramFeed || [],
+        instagramLastSyncedAt: user.instagramLastSyncedAt || null,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener perfil' });
+  }
+});
+
+app.get('/users/:userId/instagram/connect-url', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requesterId = req.query.requesterId;
+
+    if (!IG_APP_ID || !IG_APP_SECRET || !IG_REDIRECT_URI) {
+      return res.status(500).json({ error: 'Instagram no está configurado en el servidor' });
+    }
+
+    if (!requesterId) {
+      return res.status(400).json({ error: 'Falta requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester no encontrado' });
+    }
+
+    if (String(requester._id) !== String(userId) && requester.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para vincular este Instagram' });
+    }
+
+    const state = jwt.sign(
+      { type: 'instagram-connect', userId },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '15m' }
+    );
+
+    const params = new URLSearchParams({
+      client_id: IG_APP_ID,
+      redirect_uri: IG_REDIRECT_URI,
+      scope: IG_SCOPES,
+      response_type: 'code',
+      state,
+    });
+
+    return res.json({ url: `https://api.instagram.com/oauth/authorize?${params.toString()}` });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al iniciar vinculación con Instagram' });
+  }
+});
+
+app.get('/auth/instagram/callback', async (req, res) => {
+  const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+  try {
+    const code = String(req.query.code || '');
+    const state = String(req.query.state || '');
+    if (!code || !state) {
+      return res.redirect(`${frontendBase}?view=ajustes&ig=error`);
+    }
+
+    const decoded = jwt.verify(state, process.env.JWT_SECRET || 'dev-secret');
+    if (decoded?.type !== 'instagram-connect' || !decoded?.userId) {
+      return res.redirect(`${frontendBase}?view=ajustes&ig=error`);
+    }
+
+    const tokenPayload = new URLSearchParams({
+      client_id: IG_APP_ID,
+      client_secret: IG_APP_SECRET,
+      grant_type: 'authorization_code',
+      redirect_uri: IG_REDIRECT_URI,
+      code,
+    });
+
+    const tokenResponse = await fetch('https://api.instagram.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenPayload,
+    });
+    const shortTokenData = await tokenResponse.json().catch(() => ({}));
+    if (!tokenResponse.ok || !shortTokenData.access_token) {
+      return res.redirect(`${frontendBase}?view=ajustes&ig=error`);
+    }
+
+    const longTokenData = await fetchInstagramLongLivedToken(shortTokenData.access_token);
+    const profile = await fetchInstagramProfile(longTokenData.access_token);
+
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.redirect(`${frontendBase}?view=ajustes&ig=error`);
+    }
+
+    user.instagramLinked = true;
+    user.instagramUserId = String(profile.id || shortTokenData.user_id || '');
+    user.instagramHandle = String(profile.username || user.instagramHandle || '');
+    user.instagramAccessToken = longTokenData.access_token;
+    user.instagramTokenExpiresAt = new Date(Date.now() + Number(longTokenData.expires_in || 0) * 1000);
+    await user.save();
+
+    await syncInstagramForUser(user, { force: true });
+    return res.redirect(`${frontendBase}?view=ajustes&ig=connected`);
+  } catch (error) {
+    console.error('Instagram callback error:', error.message);
+    return res.redirect(`${frontendBase}?view=ajustes&ig=error`);
+  }
+});
+
+app.post('/users/:userId/instagram/sync', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId } = req.body;
+    if (!requesterId) {
+      return res.status(400).json({ error: 'Falta requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester no encontrado' });
+    }
+
+    if (String(requester._id) !== String(userId) && requester.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para sincronizar este Instagram' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    await syncInstagramForUser(user, { force: true });
+    return res.json({
+      message: 'Instagram sincronizado',
+      user: {
+        _id: user._id,
+        username: user.username,
+        role: user.role,
+        bio: user.bio,
+        profilePic: user.profilePic,
+        instagramLinked: Boolean(user.instagramLinked),
+        instagramHandle: user.instagramHandle || '',
+        instagramPosts: user.instagramPosts || [],
+        instagramFeed: user.instagramFeed || [],
+        instagramLastSyncedAt: user.instagramLastSyncedAt || null,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al sincronizar Instagram' });
+  }
+});
+
+app.post('/users/:userId/instagram/disconnect', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId } = req.body;
+    if (!requesterId) {
+      return res.status(400).json({ error: 'Falta requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester no encontrado' });
+    }
+
+    if (String(requester._id) !== String(userId) && requester.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para desvincular este Instagram' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    user.instagramLinked = false;
+    user.instagramUserId = '';
+    user.instagramAccessToken = '';
+    user.instagramTokenExpiresAt = null;
+    user.instagramLastSyncedAt = null;
+    user.instagramHandle = '';
+    user.instagramPosts = [];
+    user.instagramFeed = [];
+    await user.save();
+
+    return res.json({ message: 'Instagram desvinculado' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al desvincular Instagram' });
+  }
 });
 
 app.get('/admin/users', async (req, res) => {
@@ -1352,6 +1704,12 @@ app.delete('/albums/:albumId', async (req, res) => {
     return res.status(500).json({ error: 'Error al eliminar álbum' });
   }
 });
+
+setInterval(() => {
+  runInstagramAutoSync();
+}, IG_SYNC_INTERVAL_MS);
+
+runInstagramAutoSync();
 
 const PORT = Number(process.env.PORT) || 10000;
 const server = app.listen(PORT, () => console.log(`🚀 Servidor RTN en puerto ${PORT}`));
