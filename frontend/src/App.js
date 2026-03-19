@@ -52,6 +52,11 @@ const getRandomAlbumGradient = () => {
   return ALL_ALBUM_GRADIENTS[Math.floor(Math.random() * ALL_ALBUM_GRADIENTS.length)];
 };
 
+const getAlbumThemeGradient = (album) => {
+  if (album?.themeGradient) return album.themeGradient;
+  return getAlbumGradient(album?._id || 'a');
+};
+
 const AUTH_USER_STORAGE_KEY = 'rtnmusic.auth.user';
 const AUTH_TOKEN_STORAGE_KEY = 'rtnmusic.auth.token';
 
@@ -1405,7 +1410,7 @@ function App() {
                   <button
                     key={album._id}
                     onClick={() => setSelectedAlbum(album)}
-                    className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                    className={`text-left bg-gradient-to-br ${getAlbumThemeGradient(album)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
                   >
                     <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center relative">
                       {album.coverUrl ? (
@@ -1553,7 +1558,7 @@ function App() {
                     <button
                       key={album._id}
                       onClick={() => setSelectedAlbum(album)}
-                      className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                      className={`text-left bg-gradient-to-br ${getAlbumThemeGradient(album)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
                     >
                       <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center">
                         {album.coverUrl ? (
@@ -1693,7 +1698,7 @@ function App() {
                     <button
                       key={album._id}
                       onClick={() => setSelectedAlbum(album)}
-                      className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                      className={`text-left bg-gradient-to-br ${getAlbumThemeGradient(album)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
                     >
                       <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center">
                         {album.coverUrl ? (
@@ -1943,7 +1948,7 @@ function App() {
                     <button
                       key={album._id}
                       onClick={() => setSelectedAlbum(album)}
-                      className={`text-left bg-gradient-to-br ${getAlbumGradient(album._id)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                      className={`text-left bg-gradient-to-br ${getAlbumThemeGradient(album)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
                     >
                       <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center">
                         {album.coverUrl ? (
@@ -2726,7 +2731,7 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
 const AlbumDetailPanel = ({ album, onClose, user, onPlaySong, onOpenArtist, onShare, onEdit, onDelete }) => {
   if (!album) return null;
 
-  const gradient = getAlbumGradient(album._id);
+  const gradient = getAlbumThemeGradient(album);
   const isOwner = user && (String(user._id) === String(album.artist?._id) || user.role === 'admin');
 
   return (
@@ -2835,7 +2840,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
         setReleaseYear(Number(albumToEdit.releaseYear) || new Date().getFullYear());
         setArtistId(albumToEdit.artist?._id || user?._id || '');
         setSelectedSongs(albumToEdit.songs?.map((s) => s._id || s) || []);
-        setPreviewGradient(getAlbumGradient(albumToEdit._id));
+        setPreviewGradient(albumToEdit.themeGradient || getAlbumThemeGradient(albumToEdit));
       } else {
         setTitle('');
         setDescription('');
@@ -2880,6 +2885,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
           description: description.trim(),
           coverUrl: coverUrl.trim(),
           releaseYear,
+          themeGradient: previewGradient,
           songIds: selectedSongs,
         }),
       });
@@ -2905,7 +2911,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-start md:items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-start md:items-center justify-center p-4 pb-28 overflow-y-auto">
       <form onSubmit={handleSave} className="bg-[#121212] border border-white/10 w-full max-w-2xl rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
         <h2 className="text-2xl md:text-3xl font-black italic mb-6 md:mb-8 uppercase tracking-tighter text-white">
           {isEditing ? <><span className="text-yellow-400">EDITAR</span> ÁLBUM</> : <>CREAR <span className="text-yellow-400">NUEVO ÁLBUM</span></>}
@@ -2988,7 +2994,11 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
                     className="accent-yellow-400 cursor-pointer"
                   />
                   <span className="text-sm text-white flex-1 truncate">{song.title}</span>
-                  <span className="text-xs text-gray-400">{Math.floor(song.duration / 60)}:{String(song.duration % 60).padStart(2, '0')}</span>
+                  <span className="text-xs text-gray-400">
+                    {Number.isFinite(song.duration)
+                      ? `${Math.floor(song.duration / 60)}:${String(song.duration % 60).padStart(2, '0')}`
+                      : '--:--'}
+                  </span>
                 </label>
               ))}
             </div>

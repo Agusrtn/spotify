@@ -1173,7 +1173,7 @@ app.get('/albums/artist/:artistId', async (req, res) => {
 // CREATE album (artist)
 app.post('/albums', async (req, res) => {
   try {
-    const { title, description, coverUrl, releaseYear, songIds, artistId, userId } = req.body;
+    const { title, description, coverUrl, releaseYear, themeGradient, songIds, artistId, userId } = req.body;
 
     if (!title || !userId) {
       return res.status(400).json({ error: 'Título y userId son requeridos' });
@@ -1214,6 +1214,7 @@ app.post('/albums', async (req, res) => {
       description: description || '',
       coverUrl: coverUrl || '',
       releaseYear: Number(releaseYear) || new Date().getFullYear(),
+      themeGradient: String(themeGradient || ''),
       artist: targetArtistId,
       songs: sanitizedSongIds,
     });
@@ -1232,7 +1233,7 @@ app.post('/albums', async (req, res) => {
 app.put('/albums/:albumId', async (req, res) => {
   try {
     const { albumId } = req.params;
-    const { title, description, coverUrl, songIds, releaseYear, artistId, userId } = req.body;
+    const { title, description, coverUrl, songIds, releaseYear, themeGradient, artistId, userId } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'userId es requerido' });
@@ -1275,6 +1276,7 @@ app.put('/albums/:albumId', async (req, res) => {
     if (description !== undefined) album.description = description;
     if (coverUrl !== undefined) album.coverUrl = coverUrl;
     if (releaseYear !== undefined) album.releaseYear = Number(releaseYear) || album.releaseYear;
+    if (themeGradient !== undefined) album.themeGradient = String(themeGradient || '');
     if (Array.isArray(songIds)) {
       if (songIds.length > 0) {
         const songsCount = await Song.countDocuments({

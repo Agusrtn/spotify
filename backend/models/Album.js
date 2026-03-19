@@ -36,6 +36,10 @@ const albumSchema = new mongoose.Schema(
       max: 3000,
       default: () => new Date().getFullYear(),
     },
+    themeGradient: {
+      type: String,
+      default: '',
+    },
   },
   { timestamps: true }
 );
