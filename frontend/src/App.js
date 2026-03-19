@@ -127,6 +127,14 @@ function App() {
   const [albumsCarouselIndex, setAlbumsCarouselIndex] = useState(0);
   const [artistsCarouselIndex, setArtistsCarouselIndex] = useState(0);
   const [crewSongsPage, setCrewSongsPage] = useState(0);
+  const [featuredMotionTick, setFeaturedMotionTick] = useState(0);
+  const [featuredMotionDirection, setFeaturedMotionDirection] = useState('next');
+  const [albumsMotionTick, setAlbumsMotionTick] = useState(0);
+  const [albumsMotionDirection, setAlbumsMotionDirection] = useState('next');
+  const [artistsMotionTick, setArtistsMotionTick] = useState(0);
+  const [artistsMotionDirection, setArtistsMotionDirection] = useState('next');
+  const [crewMotionTick, setCrewMotionTick] = useState(0);
+  const [crewMotionDirection, setCrewMotionDirection] = useState('next');
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [, setCurrentIndex] = useState(0);
@@ -232,6 +240,24 @@ function App() {
     () => allSongs.slice(crewSongsPage * crewSongsPageSize, (crewSongsPage + 1) * crewSongsPageSize),
     [allSongs, crewSongsPage]
   );
+
+  const animatePageMove = (step, maxIndex, setDirection, setTick, setIndex) => {
+    if (!Number.isFinite(step) || step === 0) return;
+    const safeStep = step > 0 ? 1 : -1;
+    setIndex((prev) => {
+      const next = Math.max(0, Math.min(maxIndex, prev + safeStep));
+      if (next !== prev) {
+        setDirection(safeStep > 0 ? 'next' : 'prev');
+        setTick((tick) => tick + 1);
+      }
+      return next;
+    });
+  };
+
+  const shiftFeaturedCarousel = (step) => animatePageMove(step, maxFeaturedIndex, setFeaturedMotionDirection, setFeaturedMotionTick, setFeaturedCarouselIndex);
+  const shiftAlbumsCarousel = (step) => animatePageMove(step, maxAlbumsIndex, setAlbumsMotionDirection, setAlbumsMotionTick, setAlbumsCarouselIndex);
+  const shiftArtistsCarousel = (step) => animatePageMove(step, maxArtistsIndex, setArtistsMotionDirection, setArtistsMotionTick, setArtistsCarouselIndex);
+  const shiftCrewSongsPage = (step) => animatePageMove(step, maxCrewSongsPage, setCrewMotionDirection, setCrewMotionTick, setCrewSongsPage);
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
@@ -2066,18 +2092,18 @@ function App() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setFeaturedCarouselIndex((prev) => Math.max(0, prev - 1))}
+                    onClick={() => shiftFeaturedCarousel(-1)}
                     disabled={featuredCarouselIndex === 0}
-                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 hover:-translate-y-0.5"
                     aria-label="Anterior playlists"
                   >
                     <ChevronLeft size={16} />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFeaturedCarouselIndex((prev) => Math.min(maxFeaturedIndex, prev + 1))}
+                    onClick={() => shiftFeaturedCarousel(1)}
                     disabled={featuredCarouselIndex >= maxFeaturedIndex}
-                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 hover:-translate-y-0.5"
                     aria-label="Siguiente playlists"
                   >
                     <ChevronRight size={16} />
@@ -2088,12 +2114,18 @@ function App() {
               )}
             </div>
 
-            <div className="grid gap-4 md:gap-6" style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}>
-              {visibleFeaturedPlaylists.map((playlist) => (
+            <div className="carousel-viewport">
+              <div
+                key={`featured-${featuredMotionTick}`}
+                className={`grid gap-4 md:gap-6 carousel-page-enter ${featuredMotionDirection === 'next' ? 'carousel-page-next' : 'carousel-page-prev'}`}
+                style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}
+              >
+                {visibleFeaturedPlaylists.map((playlist, cardIndex) => (
                 <button
                   key={playlist._id}
                   onClick={() => setSelectedPlaylist(playlist)}
-                  className="text-left bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl overflow-hidden hover:bg-white/10 transition-all"
+                  className="text-left bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl overflow-hidden hover:bg-white/10 transition-all duration-500 hover:-translate-y-1 carousel-card-enter"
+                  style={{ animationDelay: `${cardIndex * 55}ms` }}
                 >
                   <div className="aspect-square bg-black/30 overflow-hidden">
                     {playlist.coverUrl ? (
@@ -2111,7 +2143,8 @@ function App() {
                     <p className="text-gray-400 text-sm line-clamp-2">{playlist.description || 'Playlist oficial de RTN Music'}</p>
                   </div>
                 </button>
-              ))}
+                ))}
+              </div>
             </div>
           </section>
 
@@ -2122,18 +2155,18 @@ function App() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setAlbumsCarouselIndex((prev) => Math.max(0, prev - 1))}
+                    onClick={() => shiftAlbumsCarousel(-1)}
                     disabled={albumsCarouselIndex === 0}
-                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 hover:-translate-y-0.5"
                     aria-label="Anterior álbumes"
                   >
                     <ChevronLeft size={16} />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setAlbumsCarouselIndex((prev) => Math.min(maxAlbumsIndex, prev + 1))}
+                    onClick={() => shiftAlbumsCarousel(1)}
                     disabled={albumsCarouselIndex >= maxAlbumsIndex}
-                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 hover:-translate-y-0.5"
                     aria-label="Siguiente álbumes"
                   >
                     <ChevronRight size={16} />
@@ -2145,12 +2178,18 @@ function App() {
             </div>
 
             {albums.length > 0 ? (
-              <div className="grid gap-4 md:gap-6" style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}>
-                {visibleAlbums.map((album) => (
+              <div className="carousel-viewport">
+                <div
+                  key={`albums-${albumsMotionTick}`}
+                  className={`grid gap-4 md:gap-6 carousel-page-enter ${albumsMotionDirection === 'next' ? 'carousel-page-next' : 'carousel-page-prev'}`}
+                  style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}
+                >
+                  {visibleAlbums.map((album, cardIndex) => (
                   <button
                     key={album._id}
                     onClick={() => setSelectedAlbum(album)}
-                    className={`text-left bg-gradient-to-br ${getAlbumThemeGradient(album)} rounded-2xl md:rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                    className={`text-left bg-gradient-to-br ${getAlbumThemeGradient(album)} rounded-2xl md:rounded-3xl overflow-hidden hover:scale-105 transition-all duration-500 shadow-lg hover:-translate-y-1 carousel-card-enter`}
+                    style={{ animationDelay: `${cardIndex * 55}ms` }}
                   >
                     <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center relative">
                       {album.coverUrl ? (
@@ -2165,7 +2204,8 @@ function App() {
                       <p className="text-white/50 text-xs mt-2">{album.songs?.length || 0} canciones • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
                     </div>
                   </button>
-                ))}
+                  ))}
+                </div>
               </div>
             ) : (
               <p className="text-gray-500 text-sm">No hay álbumes aún.</p>
@@ -2179,18 +2219,18 @@ function App() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setArtistsCarouselIndex((prev) => Math.max(0, prev - 1))}
+                    onClick={() => shiftArtistsCarousel(-1)}
                     disabled={artistsCarouselIndex === 0}
-                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 hover:-translate-y-0.5"
                     aria-label="Anterior artistas"
                   >
                     <ChevronLeft size={16} />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setArtistsCarouselIndex((prev) => Math.min(maxArtistsIndex, prev + 1))}
+                    onClick={() => shiftArtistsCarousel(1)}
                     disabled={artistsCarouselIndex >= maxArtistsIndex}
-                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 hover:-translate-y-0.5"
                     aria-label="Siguiente artistas"
                   >
                     <ChevronRight size={16} />
@@ -2202,12 +2242,18 @@ function App() {
             </div>
 
             {allArtistsForHome.length > 0 ? (
-              <div className="grid gap-4 md:gap-6" style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}>
-                {visibleArtistsForHome.map((artist) => (
+              <div className="carousel-viewport">
+                <div
+                  key={`artists-${artistsMotionTick}`}
+                  className={`grid gap-4 md:gap-6 carousel-page-enter ${artistsMotionDirection === 'next' ? 'carousel-page-next' : 'carousel-page-prev'}`}
+                  style={{ gridTemplateColumns: `repeat(${Math.max(1, homeVisibleCards)}, minmax(0, 1fr))` }}
+                >
+                  {visibleArtistsForHome.map((artist, cardIndex) => (
                   <button
                     key={artist._id}
                     onClick={() => openArtistProfile(artist._id)}
-                    className="text-left bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-4 hover:bg-white/10 transition-all"
+                    className="text-left bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-4 hover:bg-white/10 transition-all duration-500 hover:-translate-y-1 carousel-card-enter"
+                    style={{ animationDelay: `${cardIndex * 55}ms` }}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-14 h-14 rounded-xl overflow-hidden bg-yellow-400/20 flex-shrink-0 flex items-center justify-center">
@@ -2223,7 +2269,8 @@ function App() {
                       </div>
                     </div>
                   </button>
-                ))}
+                  ))}
+                </div>
               </div>
             ) : (
               <p className="text-gray-500 text-sm">No hay artistas aún.</p>
@@ -2237,18 +2284,18 @@ function App() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setCrewSongsPage((prev) => Math.max(0, prev - 1))}
+                    onClick={() => shiftCrewSongsPage(-1)}
                     disabled={crewSongsPage === 0}
-                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 hover:-translate-y-0.5"
                     aria-label="Página anterior novedades"
                   >
                     <ChevronLeft size={16} />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCrewSongsPage((prev) => Math.min(maxCrewSongsPage, prev + 1))}
+                    onClick={() => shiftCrewSongsPage(1)}
                     disabled={crewSongsPage >= maxCrewSongsPage}
-                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                    className="w-9 h-9 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 hover:-translate-y-0.5"
                     aria-label="Página siguiente novedades"
                   >
                     <ChevronRight size={16} />
@@ -2256,23 +2303,29 @@ function App() {
                 </div>
               ) : null}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {visibleCrewSongs.length > 0 ? (
-                visibleCrewSongs.map((song) => {
+            <div className="carousel-viewport">
+              <div
+                key={`crew-${crewMotionTick}`}
+                className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 carousel-page-enter ${crewMotionDirection === 'next' ? 'carousel-page-next' : 'carousel-page-prev'}`}
+              >
+                {visibleCrewSongs.length > 0 ? (
+                  visibleCrewSongs.map((song, cardIndex) => {
                   const idx = allSongs.findIndex((item) => String(item._id) === String(song._id));
                   return (
-                    <CrewSongCard
-                      key={song._id}
-                      song={song}
-                      onOpen={() => openSongDetail(song)}
-                      onPlay={() => playSong(song, idx >= 0 ? idx : 0)}
-                      onOpenArtist={(artistId) => openArtistProfile(artistId)}
-                    />
+                      <div key={song._id} className="carousel-card-enter" style={{ animationDelay: `${cardIndex * 45}ms` }}>
+                        <CrewSongCard
+                          song={song}
+                          onOpen={() => openSongDetail(song)}
+                          onPlay={() => playSong(song, idx >= 0 ? idx : 0)}
+                          onOpenArtist={(artistId) => openArtistProfile(artistId)}
+                        />
+                      </div>
                   );
-                })
-              ) : (
-                <p className="text-gray-500 text-sm">No hay canciones publicadas aun.</p>
-              )}
+                  })
+                ) : (
+                  <p className="text-gray-500 text-sm">No hay canciones publicadas aun.</p>
+                )}
+              </div>
             </div>
           </section>
         </div>
