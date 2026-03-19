@@ -168,7 +168,14 @@ const buildUserLibraryPayload = async (userId) => {
   const likedAlbumsRaw = likedAlbumIds.length
     ? await Album.find({ _id: { $in: likedAlbumIds } })
       .populate('artist', 'username _id profilePic bio')
-      .populate('songs', 'title artist coverUrl audioUrl')
+      .populate({
+        path: 'songs',
+        select: 'title artist coverUrl audioUrl collaborators',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic role' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      })
     : [];
 
   const likedPlaylistsRaw = likedPlaylistIds.length
@@ -1017,7 +1024,14 @@ app.get('/search-all', async (req, res) => {
         title: { $regex: query, $options: 'i' },
       })
         .populate('artist', 'username _id profilePic bio')
-        .populate('songs', 'title artist coverUrl audioUrl')
+        .populate({
+          path: 'songs',
+          select: 'title artist coverUrl audioUrl collaborators',
+          populate: [
+            { path: 'artist', select: 'username _id profilePic role' },
+            { path: 'collaborators.userId', select: 'username _id' },
+          ],
+        })
         .sort({ releaseDate: -1 })
         .limit(20)
       : [];
@@ -1112,8 +1126,11 @@ app.get('/discovery-feed', async (req, res) => {
       .populate('artist', 'username _id profilePic bio')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl',
-        populate: { path: 'artist', select: 'username _id profilePic role' },
+        select: 'title artist coverUrl audioUrl collaborators',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic role' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
       })
       .sort({ createdAt: -1 })
       .limit(8);
@@ -1158,8 +1175,11 @@ app.get('/artists/:artistId', async (req, res) => {
       .populate('artist', 'username _id profilePic bio')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl',
-        populate: { path: 'artist', select: 'username _id profilePic role' },
+        select: 'title artist coverUrl audioUrl collaborators',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic role' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
       })
       .sort({ releaseDate: -1 });
 
@@ -1888,8 +1908,11 @@ app.get('/albums', async (req, res) => {
       .populate('artist', 'username profilePic role')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl',
-        populate: { path: 'artist', select: 'username _id profilePic role' },
+        select: 'title artist coverUrl audioUrl collaborators',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic role' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
       });
     return res.json(albums);
   } catch (error) {
@@ -1906,8 +1929,11 @@ app.get('/albums/artist/:artistId', async (req, res) => {
       .populate('artist', 'username profilePic role')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl',
-        populate: { path: 'artist', select: 'username _id profilePic role' },
+        select: 'title artist coverUrl audioUrl collaborators',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic role' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
       });
     return res.json(albums);
   } catch (error) {
@@ -2040,8 +2066,11 @@ app.put('/albums/:albumId', async (req, res) => {
     await album.populate('artist', 'username profilePic role');
     await album.populate({
       path: 'songs',
-      select: 'title artist coverUrl audioUrl',
-      populate: { path: 'artist', select: 'username _id profilePic role' },
+      select: 'title artist coverUrl audioUrl collaborators',
+      populate: [
+        { path: 'artist', select: 'username _id profilePic role' },
+        { path: 'collaborators.userId', select: 'username _id' },
+      ],
     });
 
     return res.json({ album });

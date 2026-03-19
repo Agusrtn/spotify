@@ -3891,6 +3891,14 @@ const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenAr
     return fallback?.artist || song?.artist || null;
   };
 
+  const resolveSongCollaborators = (song) => {
+    if (Array.isArray(song?.collaborators) && song.collaborators.length) {
+      return song.collaborators;
+    }
+    const fallback = songsById.get(String(song?._id || ''));
+    return fallback?.collaborators || [];
+  };
+
   return (
     <div className="fixed inset-0 z-[105] bg-black/85 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
       <div className={`max-w-6xl mx-auto bg-gradient-to-b ${panelGradient} rounded-3xl border border-white/10 overflow-hidden`}>
@@ -3967,6 +3975,30 @@ const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenAr
                 >
                   {resolveSongArtist(song)?.username || 'Artista'}
                 </button>
+                {resolveSongCollaborators(song).length > 0 && (
+                  <div className="text-[11px] text-white/50 truncate mt-1">
+                    {resolveSongCollaborators(song).map((collaborator, collaboratorIndex) => {
+                      const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                      const collaboratorId = collaborator?.userId?._id;
+                      return (
+                        <span key={`${song._id}-album-collab-${collaboratorIndex}`}>
+                          {collaboratorIndex > 0 ? ', ' : ''}
+                          {collaboratorId ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenArtist(collaboratorId)}
+                              className="inline hover:text-yellow-300"
+                            >
+                              {collaboratorName}
+                            </button>
+                          ) : (
+                            <span>{collaboratorName}</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => onPlaySong(song, index, album.songs || [])}
