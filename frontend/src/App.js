@@ -3492,16 +3492,38 @@ const CrewSongCard = ({ song, onOpen, onPlay, onOpenArtist }) => (
 
     <div className="min-w-0 flex-1">
       <p className="text-[11px] font-black uppercase italic truncate">{song.title}</p>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (song.artist?._id) onOpenArtist(song.artist._id);
-        }}
-        className="text-[9px] text-yellow-300/90 font-bold uppercase tracking-widest truncate"
-      >
-        {song.artist?.username || 'Artista'}
-      </button>
+      <div className="flex flex-wrap items-center gap-x-0.5">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (song.artist?._id) onOpenArtist(song.artist._id);
+          }}
+          className="text-[9px] text-yellow-300/90 font-bold uppercase tracking-widest truncate"
+        >
+          {song.artist?.username || 'Artista'}
+        </button>
+        {song.collaborators?.filter((collaborator) => collaborator?.name).map((collaborator, index) => (
+          <span key={`crew-collaborator-${song._id}-${index}`} className="flex items-center">
+            <span className="text-[9px] text-yellow-300/70 font-bold">,</span>
+            {collaborator.userId ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const collaboratorId = collaborator.userId?._id || collaborator.userId;
+                  if (collaboratorId) onOpenArtist(collaboratorId);
+                }}
+                className="text-[9px] text-yellow-300/90 font-bold uppercase tracking-widest truncate"
+              >
+                {collaborator.userId?.username || collaborator.name}
+              </button>
+            ) : (
+              <span className="text-[9px] text-yellow-300/90 font-bold uppercase tracking-widest truncate">{collaborator.name}</span>
+            )}
+          </span>
+        ))}
+      </div>
     </div>
 
     <button
