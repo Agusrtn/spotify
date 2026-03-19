@@ -681,7 +681,7 @@ app.delete('/admin/playlists/:playlistId', async (req, res) => {
 app.put('/songs/:songId', async (req, res) => {
   try {
     const { songId } = req.params;
-    const { title, description, lyrics, userId, collaborators: collaboratorsRaw } = req.body;
+    const { title, description, lyrics, artistId, userId, collaborators: collaboratorsRaw } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'Falta userId para autorizar edición' });
@@ -702,6 +702,23 @@ app.put('/songs/:songId', async (req, res) => {
       return res.status(403).json({ error: 'No tienes permisos para editar esta canción' });
     }
 
+    if (artistId !== undefined) {
+      if (user.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo admins pueden cambiar el artista creador' });
+      }
+
+      const nextArtist = await User.findById(artistId).select('_id role');
+      if (!nextArtist) {
+        return res.status(404).json({ error: 'Artista no encontrado' });
+      }
+
+      if (nextArtist.role !== 'artist' && nextArtist.role !== 'admin') {
+        return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de artista' });
+      }
+
+      song.artist = artistId;
+    }
+
     song.title = (title || '').trim() || song.title;
     song.description = description || '';
     song.lyrics = lyrics || '';
@@ -716,7 +733,7 @@ app.put('/songs/:songId', async (req, res) => {
     await song.save();
 
     const updatedSong = await Song.findById(songId)
-      .populate('artist', 'username _id')
+      .populate('artist', 'username _id profilePic bio')
       .populate('collaborators.userId', 'username _id');
     return res.json({ message: 'Canción actualizada', song: updatedSong });
   } catch (error) {

@@ -634,6 +634,13 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isModalOpen, user]);
 
+  useEffect(() => {
+    if (selectedSong && user?.role === 'admin' && members.length === 0) {
+      fetchMembers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSong, user, members.length]);
+
   const fetchMySongs = async (artistId) => {
     try {
       const res = await fetch(`${API_URL}/songs?artist=${artistId}`);
@@ -2308,6 +2315,7 @@ function App() {
         song={selectedSong}
         onClose={() => setSelectedSong(null)}
         user={user}
+        members={members}
         onPlay={(song) => {
           const idx = allSongs.findIndex((item) => item._id === song._id);
           playSong(song, idx >= 0 ? idx : 0);
@@ -2432,11 +2440,12 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick 
   </div>
 );
 
-const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpenArtist, onShare, onAddToPlaylist }) => {
+const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelete, onOpenArtist, onShare, onAddToPlaylist }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [lyrics, setLyrics] = useState('');
+  const [artistId, setArtistId] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -2444,6 +2453,7 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
     setTitle(song.title || '');
     setDescription(song.description || '');
     setLyrics(song.lyrics || '');
+    setArtistId(song.artist?._id || '');
     setIsEditing(false);
   }, [song]);
 
@@ -2452,10 +2462,18 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
   const isOwner = String(song.artist?._id) === String(user?._id);
   const canEdit = isOwner || user?.role === 'admin';
   const canDelete = isOwner || user?.role === 'admin';
+  const artistOptions = user?.role === 'admin'
+    ? (members || []).filter((member) => member.role === 'artist' || member.role === 'admin')
+    : [];
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave(song._id, { title, description, lyrics });
+    await onSave(song._id, {
+      title,
+      description,
+      lyrics,
+      ...(user?.role === 'admin' ? { artistId } : {}),
+    });
     setSaving(false);
     setIsEditing(false);
   };
@@ -2547,6 +2565,17 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
               <h4 className="text-xl font-black">Detalle</h4>
               {isEditing ? (
                 <>
+                  {user?.role === 'admin' && (
+                    <select
+                      value={artistId}
+                      onChange={(e) => setArtistId(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 outline-none focus:border-yellow-400"
+                    >
+                      {artistOptions.map((member) => (
+                        <option key={member._id} value={member._id}>{member.username} ({member.role})</option>
+                      ))}
+                    </select>
+                  )}
                   <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
