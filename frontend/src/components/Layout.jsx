@@ -302,8 +302,9 @@ const Layout = ({
         <div className="flex items-center justify-end gap-6 w-1/3">
           <button
             type="button"
-            onClick={() => setShowLyrics((prev) => !prev)}
-            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${showLyrics ? 'border-yellow-300 text-yellow-300 bg-yellow-400/10' : 'border-white/10 text-gray-500 hover:text-yellow-300 hover:border-yellow-300/30'}`}
+            onClick={() => currentSong && setShowLyrics((prev) => !prev)}
+            disabled={!currentSong}
+            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${showLyrics ? 'border-yellow-300 text-yellow-300 bg-yellow-400/10' : 'border-white/10 text-gray-500 hover:text-yellow-300 hover:border-yellow-300/30'} ${!currentSong ? 'opacity-40 cursor-not-allowed' : ''}`}
             aria-label="Mostrar letras"
           >
             <FileText size={16} />
@@ -350,8 +351,9 @@ const Layout = ({
           </button>
           <button
             type="button"
-            onClick={() => setShowLyrics((prev) => !prev)}
-            className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 ${showLyrics ? 'border-yellow-300 text-yellow-300 bg-yellow-400/10' : 'border-white/20 text-gray-300'}`}
+            onClick={() => currentSong && setShowLyrics((prev) => !prev)}
+            disabled={!currentSong}
+            className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 ${showLyrics ? 'border-yellow-300 text-yellow-300 bg-yellow-400/10' : 'border-white/20 text-gray-300'} ${!currentSong ? 'opacity-40 cursor-not-allowed' : ''}`}
             aria-label="Mostrar letras"
           >
             <FileText size={15} />
@@ -372,7 +374,7 @@ const Layout = ({
       </div>
 
       {showLyrics && (
-        <div className="fixed z-[60] left-3 right-3 md:left-72 md:right-8 bottom-[8.5rem] md:bottom-36 top-20 md:top-auto bg-black/90 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
+        <div className="fixed z-[60] left-3 right-3 md:left-72 md:right-8 bottom-[8.5rem] md:bottom-36 max-h-[58vh] md:max-h-[52vh] bg-black/90 border border-white/10 rounded-2xl backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
             <p className="text-xs font-black uppercase tracking-[0.2em] text-yellow-300">Lyrics</p>
             <button
@@ -383,7 +385,7 @@ const Layout = ({
               <X size={14} />
             </button>
           </div>
-          <div className="h-full overflow-y-auto px-4 py-4 space-y-2">
+          <div className="min-h-0 overflow-y-auto px-4 py-4 space-y-2">
             {!hasTimestampLyrics && lyricsLines.length > 0 && (
               <p className="text-[11px] text-gray-500 mb-2">Sincronizacion disponible solo con formato [mm:ss] en la letra.</p>
             )}
