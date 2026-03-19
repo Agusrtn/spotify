@@ -2395,29 +2395,27 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick 
 
     <div className="min-w-0 flex-1 overflow-hidden">
       <h4 className="font-black uppercase italic text-sm truncate">{song.title}</h4>
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
+      <div className="flex flex-wrap items-center gap-x-0 mt-0.5">
         <button
           type="button"
           onClick={onArtistClick}
           className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase hover:text-yellow-300 leading-tight"
         >
-          {song.artist?.username || 'Anonimo'}<span className="text-white/40 normal-case font-normal tracking-normal"> (Creador)</span>
+          {song.artist?.username || 'Anonimo'}
         </button>
-        {song.collaborators?.map((c, i) => (
-          <span key={i} className="flex items-center gap-1 leading-tight">
-            <span className="text-white/30 text-[10px]">·</span>
+        {song.collaborators?.filter(c => c.name).map((c, i) => (
+          <span key={i} className="flex items-center leading-tight">
+            <span className="text-yellow-400 text-[10px] font-bold mx-0.5">,</span>
             {c.userId ? (
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onCollaboratorClick && onCollaboratorClick(c.userId._id || c.userId); }}
-                className="text-[10px] text-yellow-300/80 font-bold tracking-widest uppercase hover:text-yellow-300"
+                className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase hover:text-yellow-300"
               >
-                {c.name}<span className="text-white/40 normal-case font-normal tracking-normal"> (Colaborador)</span>
+                {c.name}
               </button>
             ) : (
-              <span className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">
-                {c.name}<span className="text-white/40 normal-case font-normal tracking-normal"> (Colaborador)</span>
-              </span>
+              <span className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">{c.name}</span>
             )}
           </span>
         ))}
@@ -2473,25 +2471,26 @@ const SongDetailPanel = ({ song, onClose, user, onPlay, onSave, onDelete, onOpen
           <div className="min-w-0 flex-1">
             <p className="text-white/80 text-xl font-bold">Cancion</p>
             <h2 className="text-3xl md:text-5xl lg:text-8xl font-black leading-none uppercase tracking-tight break-words">{title || song.title}</h2>
-            <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <div className="mt-4 flex flex-wrap items-baseline gap-x-0">
               <button
                 type="button"
                 onClick={() => song.artist?._id && onOpenArtist(song.artist._id)}
                 className="text-white/80 font-semibold hover:text-yellow-300"
               >
-                {song.artist?.username || 'Artista'}<span className="text-white/40 font-normal"> (Creador)</span>
+                {song.artist?.username || 'Artista'}
                 {' – '}{new Date(song.createdAt).getFullYear() || '2026'}
               </button>
-              {song.collaborators?.map((c, i) => (
-                c.userId ? (
-                  <button key={i} type="button" onClick={() => { const id = c.userId._id || c.userId; if (id) onOpenArtist(id); }} className="text-white/70 font-semibold hover:text-yellow-300">
-                    {c.name}<span className="text-white/40 font-normal"> (Colaborador)</span>
-                  </button>
-                ) : (
-                  <span key={i} className="text-white/70 font-semibold">
-                    {c.name}<span className="text-white/40 font-normal"> (Colaborador)</span>
-                  </span>
-                )
+              {song.collaborators?.filter(c => c.name).map((c, i) => (
+                <span key={i} className="flex items-baseline">
+                  <span className="text-white/80 font-semibold mx-1">,</span>
+                  {c.userId ? (
+                    <button type="button" onClick={() => { const id = c.userId._id || c.userId; if (id) onOpenArtist(id); }} className="text-white/80 font-semibold hover:text-yellow-300">
+                      {c.name}
+                    </button>
+                  ) : (
+                    <span className="text-white/80 font-semibold">{c.name}</span>
+                  )}
+                </span>
               ))}
             </div>
           </div>
