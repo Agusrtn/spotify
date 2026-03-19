@@ -2492,7 +2492,7 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick 
                 onClick={(e) => { e.stopPropagation(); onCollaboratorClick && onCollaboratorClick(c.userId._id || c.userId); }}
                 className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase hover:text-yellow-300"
               >
-                {c.name}
+                {c.userId?.username || c.name}
               </button>
             ) : (
               <span className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">{c.name}</span>
@@ -2575,7 +2575,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
                   <span className="text-white/80 font-semibold mx-1">,</span>
                   {c.userId ? (
                     <button type="button" onClick={() => { const id = c.userId._id || c.userId; if (id) onOpenArtist(id); }} className="text-white/80 font-semibold hover:text-yellow-300">
-                      {c.name}
+                      {c.userId?.username || c.name}
                     </button>
                   ) : (
                     <span className="text-white/80 font-semibold">{c.name}</span>

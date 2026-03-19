@@ -1041,6 +1041,12 @@ app.put('/admin/users/:userId/username', async (req, res) => {
     targetUser.username = nextUsername;
     await targetUser.save();
 
+    await Song.updateMany(
+      { 'collaborators.userId': targetUser._id },
+      { $set: { 'collaborators.$[elem].name': targetUser.username } },
+      { arrayFilters: [{ 'elem.userId': targetUser._id }] }
+    );
+
     return res.json({
       message: 'Nombre de usuario actualizado',
       user: {
