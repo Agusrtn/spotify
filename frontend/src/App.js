@@ -2736,7 +2736,6 @@ const PlaylistDetailPanel = ({ playlist, onClose, onPlaySong, onOpenArtist }) =>
               >
                 <Play size={18} fill="white" className="text-white ml-[2px]" />
               </button>
-              <span className="hidden md:block text-right text-gray-500 text-sm flex-shrink-0">{song.audioUrl ? 'MP3' : '--'}</span>
             </div>
           )) : <p className="text-gray-500">Esta playlist no tiene canciones.</p>}
         </div>
