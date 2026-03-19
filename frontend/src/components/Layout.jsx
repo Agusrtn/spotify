@@ -2,6 +2,49 @@ import React, { useMemo, useState } from 'react';
 import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell, FileText, X } from 'lucide-react';
 import Aurora from './Aurora';
 
+const LYRIC_TS_REGEX = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+
+const parseLyricsWithTimestamps = (rawLyrics) => {
+  const rows = String(rawLyrics || '').split('\n');
+  const parsed = [];
+
+  rows.forEach((rawRow, rowIndex) => {
+    const row = String(rawRow || '');
+    const matches = [...row.matchAll(LYRIC_TS_REGEX)];
+    const text = row.replace(LYRIC_TS_REGEX, '').trim();
+
+    if (!matches.length && text) {
+      parsed.push({
+        id: `plain-${rowIndex}`,
+        text,
+        time: null,
+      });
+      return;
+    }
+
+    matches.forEach((match, tsIndex) => {
+      const mm = Number(match[1] || 0);
+      const ss = Number(match[2] || 0);
+      const fracRaw = String(match[3] || '0');
+      const frac = fracRaw.length === 3 ? Number(fracRaw) / 1000 : Number(fracRaw) / 100;
+      const time = (mm * 60) + ss + frac;
+
+      parsed.push({
+        id: `ts-${rowIndex}-${tsIndex}`,
+        text,
+        time,
+      });
+    });
+  });
+
+  return parsed.sort((a, b) => {
+    if (a.time == null && b.time == null) return 0;
+    if (a.time == null) return 1;
+    if (b.time == null) return -1;
+    return a.time - b.time;
+  });
+};
+
 const Layout = ({ 
   children, 
   setView, 
@@ -27,20 +70,31 @@ const Layout = ({
 }) => {
   const [showLyrics, setShowLyrics] = useState(false);
 
-  const lyricsLines = useMemo(() => {
+  const parsedLyrics = useMemo(() => {
     const rawLyrics = String(currentSong?.lyrics || '').trim();
     if (!rawLyrics) return [];
-    return rawLyrics
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
+    return parseLyricsWithTimestamps(rawLyrics);
   }, [currentSong?.lyrics]);
 
+  const hasTimestampLyrics = useMemo(
+    () => parsedLyrics.some((line) => Number.isFinite(line.time)),
+    [parsedLyrics]
+  );
+
+  const lyricsLines = useMemo(() => parsedLyrics.map((line) => line.text).filter(Boolean), [parsedLyrics]);
+
   const activeLyricIndex = useMemo(() => {
-    if (!lyricsLines.length || !duration || duration <= 0) return -1;
-    const ratio = Math.max(0, Math.min(1, currentTime / duration));
-    return Math.min(lyricsLines.length - 1, Math.floor(ratio * lyricsLines.length));
-  }, [lyricsLines, duration, currentTime]);
+    if (!parsedLyrics.length || !hasTimestampLyrics) return -1;
+
+    let activeIndex = -1;
+    for (let i = 0; i < parsedLyrics.length; i += 1) {
+      const lineTime = parsedLyrics[i].time;
+      if (!Number.isFinite(lineTime)) continue;
+      if (currentTime >= lineTime) activeIndex = i;
+      if (currentTime < lineTime) break;
+    }
+    return activeIndex;
+  }, [parsedLyrics, hasTimestampLyrics, currentTime]);
 
   const formatTime = (time) => {
     if (!time || isNaN(time)) return '0:00';
@@ -273,7 +327,7 @@ const Layout = ({
 
       {/* MINI PLAYER MÓVIL */}
       <div className="md:hidden fixed bottom-16 left-0 right-0 z-40 bg-black/95 backdrop-blur-xl border-t border-white/10">
-        <div className="px-4 py-3 flex items-center gap-3">
+        <div className="px-3 py-2.5 flex items-center gap-2">
           <div className="w-10 h-10 bg-yellow-400 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
             {currentSong?.coverUrl ? (
               <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
@@ -285,7 +339,7 @@ const Layout = ({
             <p className="text-sm font-black truncate">{currentSong?.title || 'RTN MUSIC'}</p>
             <p className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">{currentSong?.artist?.username || 'System Radio'}</p>
           </div>
-          <button onClick={prevSong} className="text-gray-500 p-1 active:text-white">
+          <button onClick={prevSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
             <SkipBack size={18} />
           </button>
           <button
@@ -302,7 +356,7 @@ const Layout = ({
           >
             <FileText size={15} />
           </button>
-          <button onClick={nextSong} className="text-gray-500 p-1 active:text-white">
+          <button onClick={nextSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
             <SkipForward size={18} />
           </button>
         </div>
@@ -318,7 +372,7 @@ const Layout = ({
       </div>
 
       {showLyrics && (
-        <div className="fixed z-[60] left-4 right-4 md:left-72 md:right-8 bottom-24 md:bottom-36 bg-black/90 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
+        <div className="fixed z-[60] left-3 right-3 md:left-72 md:right-8 bottom-[8.5rem] md:bottom-36 top-20 md:top-auto bg-black/90 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
             <p className="text-xs font-black uppercase tracking-[0.2em] text-yellow-300">Lyrics</p>
             <button
@@ -329,14 +383,17 @@ const Layout = ({
               <X size={14} />
             </button>
           </div>
-          <div className="max-h-[45vh] overflow-y-auto px-4 py-4 space-y-2">
+          <div className="h-full overflow-y-auto px-4 py-4 space-y-2">
+            {!hasTimestampLyrics && lyricsLines.length > 0 && (
+              <p className="text-[11px] text-gray-500 mb-2">Sincronizacion disponible solo con formato [mm:ss] en la letra.</p>
+            )}
             {lyricsLines.length ? (
-              lyricsLines.map((line, index) => (
+              parsedLyrics.map((line, index) => (
                 <p
-                  key={`${line}-${index}`}
+                  key={line.id}
                   className={`text-sm md:text-base leading-relaxed transition-all ${index === activeLyricIndex ? 'text-yellow-300 font-bold' : 'text-gray-300'}`}
                 >
-                  {line}
+                  {line.text}
                 </p>
               ))
             ) : (

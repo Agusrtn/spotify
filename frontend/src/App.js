@@ -1696,17 +1696,17 @@ function App() {
     >
       {view === 'inicio' && (
         <div className="animate-in fade-in duration-700">
-          <h1 className="text-4xl md:text-7xl font-black mb-4 md:mb-8 tracking-tighter uppercase italic">
+          <h1 className="text-3xl sm:text-4xl md:text-7xl font-black mb-4 md:mb-8 tracking-tighter uppercase italic leading-tight">
             EXPLORA EL <span className="text-yellow-400 font-black">SONIDO</span>
           </h1>
 
-          <section className="mb-14">
-            <div className="flex items-center justify-between mb-6">
+          <section className="mb-10 md:mb-14">
+            <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
               <h3 className="text-xl md:text-3xl font-black tracking-tight">Discovery Feed</h3>
               <button
                 type="button"
                 onClick={() => fetchDiscoveryFeed(user._id)}
-                className="inline-flex items-center gap-2 text-sm text-yellow-300 font-bold"
+                className="inline-flex items-center gap-2 text-xs md:text-sm text-yellow-300 font-bold"
               >
                 <Compass size={16} /> Refrescar
               </button>
@@ -1715,8 +1715,8 @@ function App() {
             {discoveryLoading ? (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-gray-400">Cargando discovery...</div>
             ) : (
-              <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-5">
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                   <p className="text-[10px] font-black text-yellow-300 uppercase tracking-[0.2em] mb-3">Para ti</p>
                   <div className="space-y-2">
                     {(discoveryFeed.forYouSongs || []).slice(0, 5).map((song) => {
@@ -1744,7 +1744,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                   <p className="text-[10px] font-black text-yellow-300 uppercase tracking-[0.2em] mb-3">Trending</p>
                   <div className="space-y-2">
                     {(discoveryFeed.trendingSongs || []).slice(0, 5).map((song) => {
@@ -1772,7 +1772,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                   <p className="text-[10px] font-black text-yellow-300 uppercase tracking-[0.2em] mb-3">Álbumes nuevos</p>
                   <div className="space-y-2">
                     {(discoveryFeed.freshAlbums || []).slice(0, 4).map((album) => (
@@ -1794,7 +1794,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                   <p className="text-[10px] font-black text-yellow-300 uppercase tracking-[0.2em] mb-3">Playlists recomendadas</p>
                   <div className="space-y-2">
                     {(discoveryFeed.playlists || []).slice(0, 4).map((playlist) => (
@@ -1819,15 +1819,15 @@ function App() {
             )}
           </section>
 
-          <section className="mb-14">
-            <div className="flex items-center justify-between mb-6">
+          <section className="mb-10 md:mb-14">
+            <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
               <h3 className="text-xl md:text-3xl font-black tracking-tight">Tus favoritos</h3>
-              <span className="text-sm text-gray-400 font-bold">{likedSongIds.length + likedAlbumIds.length + likedPlaylistIds.length} guardados</span>
+              <span className="text-xs md:text-sm text-gray-400 font-bold">{likedSongIds.length + likedAlbumIds.length + likedPlaylistIds.length} guardados</span>
             </div>
 
             {(favoriteLibrary.songs?.length || favoriteLibrary.albums?.length || favoriteLibrary.playlists?.length) ? (
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6">
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                   <p className="text-xs font-black text-pink-300 uppercase tracking-[0.2em] mb-4">Canciones</p>
                   <div className="space-y-2">
                     {(favoriteLibrary.songs || []).slice(0, 4).map((song) => {
@@ -1862,7 +1862,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                   <p className="text-xs font-black text-pink-300 uppercase tracking-[0.2em] mb-4">Álbumes</p>
                   <div className="space-y-2">
                     {(favoriteLibrary.albums || []).slice(0, 4).map((album) => (
@@ -1890,7 +1890,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-4">
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                   <p className="text-xs font-black text-pink-300 uppercase tracking-[0.2em] mb-4">Playlists</p>
                   <div className="space-y-2">
                     {(favoriteLibrary.playlists || []).slice(0, 4).map((playlist) => (
@@ -1923,8 +1923,8 @@ function App() {
             )}
           </section>
 
-          <section className="mb-14">
-            <div className="flex items-center justify-between mb-6">
+          <section className="mb-10 md:mb-14">
+            <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
               <h3 className="text-xl md:text-3xl font-black tracking-tight">Continuar escuchando</h3>
               <Clock3 size={18} className="text-yellow-300" />
             </div>
@@ -1972,18 +1972,18 @@ function App() {
             )}
           </section>
 
-          <section className="mb-14">
-            <div className="flex items-center justify-between mb-6">
+          <section className="mb-10 md:mb-14">
+            <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
               <h3 className="text-xl md:text-3xl font-black tracking-tight">Especialmente para ti</h3>
-              <span className="text-sm text-gray-400 font-bold">Mostrar todos</span>
+              <span className="text-xs md:text-sm text-gray-400 font-bold">Mostrar todos</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
               {playlists.filter((playlist) => playlist.isDefault).slice(0, 4).map((playlist) => (
                 <button
                   key={playlist._id}
                   onClick={() => setSelectedPlaylist(playlist)}
-                  className="text-left bg-white/5 border border-white/10 rounded-3xl overflow-hidden hover:bg-white/10 transition-all"
+                  className="text-left bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl overflow-hidden hover:bg-white/10 transition-all"
                 >
                   <div className="aspect-square bg-black/30 overflow-hidden">
                     {playlist.coverUrl ? (
@@ -1997,7 +1997,7 @@ function App() {
                     )}
                   </div>
                   <div className="p-4">
-                    <p className="font-black text-2xl leading-tight mb-2">{playlist.name}</p>
+                    <p className="font-black text-lg md:text-2xl leading-tight mb-2">{playlist.name}</p>
                     <p className="text-gray-400 text-sm line-clamp-2">{playlist.description || 'Playlist oficial de RTN Music'}</p>
                   </div>
                 </button>
@@ -2005,19 +2005,19 @@ function App() {
             </div>
           </section>
 
-          <section className="mb-14">
-            <div className="flex items-center justify-between mb-6">
+          <section className="mb-10 md:mb-14">
+            <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
               <h3 className="text-xl md:text-3xl font-black tracking-tight">Álbumes</h3>
-              <span className="text-sm text-gray-400 font-bold">Mostrar todos</span>
+              <span className="text-xs md:text-sm text-gray-400 font-bold">Mostrar todos</span>
             </div>
 
             {albums.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
                 {albums.slice(0, 4).map((album) => (
                   <button
                     key={album._id}
                     onClick={() => setSelectedAlbum(album)}
-                    className={`text-left bg-gradient-to-br ${getAlbumThemeGradient(album)} rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
+                    className={`text-left bg-gradient-to-br ${getAlbumThemeGradient(album)} rounded-2xl md:rounded-3xl overflow-hidden hover:scale-105 transition-all shadow-lg`}
                   >
                     <div className="aspect-square bg-black/20 overflow-hidden flex items-center justify-center relative">
                       {album.coverUrl ? (
@@ -2027,7 +2027,7 @@ function App() {
                       )}
                     </div>
                     <div className="p-4 bg-black/40 backdrop-blur-sm">
-                      <p className="font-black text-2xl leading-tight mb-2 text-white">{album.title}</p>
+                      <p className="font-black text-lg md:text-2xl leading-tight mb-2 text-white">{album.title}</p>
                       <p className="text-white/70 text-sm">{album.artist?.username || 'Artista'}</p>
                       <p className="text-white/50 text-xs mt-2">{album.songs?.length || 0} canciones • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
                     </div>
