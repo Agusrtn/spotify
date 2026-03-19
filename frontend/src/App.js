@@ -52,6 +52,23 @@ const getRandomAlbumGradient = () => {
   return ALL_ALBUM_GRADIENTS[Math.floor(Math.random() * ALL_ALBUM_GRADIENTS.length)];
 };
 
+const INSTAGRAM_POST_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[A-Za-z0-9_-]+/i;
+
+const normalizeInstagramHandle = (handle = '') => String(handle).trim().replace(/^@+/, '');
+
+const normalizeInstagramPostUrl = (url = '') => {
+  const trimmed = String(url).trim();
+  if (!trimmed) return '';
+  if (!INSTAGRAM_POST_REGEX.test(trimmed)) return '';
+  return trimmed.replace(/\/?$/, '/');
+};
+
+const getInstagramEmbedUrl = (url = '') => {
+  const normalized = normalizeInstagramPostUrl(url);
+  if (!normalized) return '';
+  return `${normalized}embed/captioned/`;
+};
+
 const getAlbumThemeGradient = (album) => {
   if (album?.themeGradient) return album.themeGradient;
   return getAlbumGradient(album?._id || 'a');
@@ -1915,17 +1932,27 @@ function App() {
                   {artistProfile.artist.instagramPosts?.filter(Boolean).length ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       {artistProfile.artist.instagramPosts.filter(Boolean).map((postUrl, index) => (
-                        <a
+                        <div
                           key={`${postUrl}-${index}`}
-                          href={postUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block rounded-2xl border border-pink-400/20 bg-gradient-to-br from-pink-500/20 via-orange-400/10 to-black/30 p-4 hover:border-pink-300/40 hover:bg-white/10 transition-all"
+                          className="rounded-2xl border border-pink-400/20 bg-gradient-to-br from-pink-500/20 via-orange-400/10 to-black/30 p-3 hover:border-pink-300/40 transition-all"
                         >
-                          <p className="text-[10px] uppercase tracking-[0.25em] text-pink-200 font-black mb-2">Instagram Post</p>
-                          <p className="font-black text-lg">Publicación {index + 1}</p>
-                          <p className="text-sm text-gray-300 mt-2 break-all line-clamp-3">{postUrl}</p>
-                        </a>
+                          <div className="aspect-[4/5] rounded-xl overflow-hidden bg-black/30 border border-white/10">
+                            <iframe
+                              src={getInstagramEmbedUrl(postUrl)}
+                              title={`Instagram post ${index + 1}`}
+                              className="w-full h-full"
+                              loading="lazy"
+                            />
+                          </div>
+                          <a
+                            href={postUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 inline-flex px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+                          >
+                            Abrir publicación
+                          </a>
+                        </div>
                       ))}
                     </div>
                   ) : (
@@ -2399,7 +2426,7 @@ function App() {
                   <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Instagram vinculado</p>
                   <input
                     value={settingsInstagramHandle}
-                    onChange={(e) => setSettingsInstagramHandle(e.target.value.replace(/^@+/, ''))}
+                    onChange={(e) => setSettingsInstagramHandle(normalizeInstagramHandle(e.target.value))}
                     className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
                     placeholder="usuario_de_instagram"
                   />
@@ -2414,7 +2441,7 @@ function App() {
                         value={post}
                         onChange={(e) => setSettingsInstagramPosts((prev) => prev.map((item, idx) => idx === index ? e.target.value : item))}
                         className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
-                        placeholder={`Link del post de Instagram ${index + 1}`}
+                        placeholder={`https://www.instagram.com/p/... (${index + 1})`}
                       />
                     ))}
                   </div>

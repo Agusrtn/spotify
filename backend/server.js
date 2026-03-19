@@ -915,6 +915,7 @@ app.put('/users/:userId/profile', (req, res) => {
     try {
       const { userId } = req.params;
       const { bio, instagramHandle, instagramPosts } = req.body;
+      const instagramPostPattern = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[A-Za-z0-9_-]+/i;
 
       const user = await User.findById(userId);
       if (!user) {
@@ -933,6 +934,8 @@ app.put('/users/:userId/profile', (req, res) => {
         user.instagramPosts = instagramPosts
           .split('\n')
           .map((item) => item.trim())
+          .map((item) => item.replace(/\/?$/, '/'))
+          .filter((item) => instagramPostPattern.test(item))
           .filter(Boolean)
           .slice(0, 3);
       }
