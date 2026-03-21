@@ -182,6 +182,10 @@ const getAiProviderErrorMessage = (error) => {
   const raw = String(error?.error?.message || error?.message || '').trim();
   if (!raw) return 'Error de IA sin detalle disponible';
 
+  if (/^connection error\.?$/i.test(raw) || /fetch failed|network error|econnreset|etimedout|enotfound|socket hang up/i.test(raw)) {
+    return 'No se pudo conectar con OpenAI desde el backend. Verifica red/egress del servidor y vuelve a intentar en unos segundos.';
+  }
+
   if (/model.*(not found|does not exist|do not have access)/i.test(raw)) {
     return 'Tu cuenta OpenAI no tiene acceso al modelo configurado para alineación perfecta. Usa mode=balanced o habilita acceso al modelo.';
   }
@@ -195,6 +199,43 @@ const getAiProviderErrorMessage = (error) => {
   }
 
   return raw;
+};
+
+const isTransientOpenAiError = (error) => {
+  const message = String(error?.error?.message || error?.message || '').toLowerCase();
+  if (!message) return false;
+  return (
+    message.includes('connection error')
+    || message.includes('fetch failed')
+    || message.includes('network error')
+    || message.includes('econnreset')
+    || message.includes('etimedout')
+    || message.includes('enotfound')
+    || message.includes('socket hang up')
+    || message.includes('rate limit')
+    || message.includes('429')
+  );
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const callOpenAiWithRetry = async (fn, { attempts = 3, baseDelayMs = 700 } = {}) => {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const transient = isTransientOpenAiError(error);
+      const isLast = i === attempts - 1;
+      if (!transient || isLast) break;
+      const waitMs = baseDelayMs * (i + 1);
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(waitMs);
+    }
+  }
+  throw lastError;
 };
 
 const refineRowsWithAi = async ({ lines, baseRows, wordTimestamps, durationSec, mode = 'balanced' }) => {
@@ -228,18 +269,18 @@ const refineRowsWithAi = async ({ lines, baseRows, wordTimestamps, durationSec, 
 
   let response;
   try {
-    response = await openaiClient.chat.completions.create({
+    response = await callOpenAiWithRetry(() => openaiClient.chat.completions.create({
       model: mode === 'perfect' ? 'gpt-4.1' : 'gpt-4.1-mini',
       ...requestPayload,
-    });
+    }));
   } catch (primaryError) {
     const canFallbackModel = mode === 'perfect' && /model.*(not found|does not exist|do not have access)/i.test(String(primaryError?.message || ''));
     if (!canFallbackModel) throw primaryError;
 
-    response = await openaiClient.chat.completions.create({
+    response = await callOpenAiWithRetry(() => openaiClient.chat.completions.create({
       model: 'gpt-4.1-mini',
       ...requestPayload,
-    });
+    }));
   }
 
   const raw = response?.choices?.[0]?.message?.content || '';
@@ -800,12 +841,12 @@ app.post('/ai/lyrics/to-lrc', (req, res) => {
         return res.status(400).json({ error: 'Debes enviar un archivo de audio o una audioUrl válida' });
       }
 
-      const transcription = await openaiClient.audio.transcriptions.create({
+      const transcription = await callOpenAiWithRetry(async () => openaiClient.audio.transcriptions.create({
         file: await toFile(audioBuffer, audioName),
         model: 'gpt-4o-mini-transcribe',
         response_format: 'verbose_json',
         timestamp_granularities: ['word'],
-      });
+      }));
 
       const durationSec = Number(transcription?.duration || 0);
       const wordTimestamps = Array.isArray(transcription?.words) ? transcription.words : [];
