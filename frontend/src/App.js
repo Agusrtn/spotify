@@ -53,6 +53,73 @@ const getRandomAlbumGradient = () => {
 };
 
 const INSTAGRAM_POST_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[A-Za-z0-9_-]+/i;
+const LYRIC_TIMESTAMP_REGEX = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+
+const parseLyricsForDisplay = (rawLyrics = '') => {
+  const rows = String(rawLyrics || '').split('\n');
+  const parsed = [];
+  let hasTimestampRows = false;
+
+  rows.forEach((rawRow, rowIndex) => {
+    const row = String(rawRow || '');
+    const matches = [...row.matchAll(LYRIC_TIMESTAMP_REGEX)];
+    const text = row.replace(LYRIC_TIMESTAMP_REGEX, '').trim();
+
+    if (matches.length > 0) {
+      hasTimestampRows = true;
+      matches.forEach((match, matchIndex) => {
+        const minute = Number(match[1] || 0);
+        const second = Number(match[2] || 0);
+        const fraction = String(match[3] || '').trim();
+        const safeMinute = String(Number.isFinite(minute) ? minute : 0).padStart(2, '0');
+        const safeSecond = String(Number.isFinite(second) ? second : 0).padStart(2, '0');
+        const timeLabel = fraction ? `${safeMinute}:${safeSecond}.${fraction}` : `${safeMinute}:${safeSecond}`;
+        parsed.push({
+          id: `lrc-${rowIndex}-${matchIndex}`,
+          text,
+          timeLabel,
+        });
+      });
+      return;
+    }
+
+    if (text) {
+      parsed.push({
+        id: `plain-${rowIndex}`,
+        text,
+        timeLabel: '',
+      });
+    }
+  });
+
+  return {
+    isLrc: hasTimestampRows,
+    lines: parsed,
+  };
+};
+
+const containsLrcTimestamps = (rawLyrics = '') => /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/.test(String(rawLyrics || ''));
+
+const formatLrcTimestamp = (totalSeconds = 0) => {
+  const safeSeconds = Math.max(0, Number(totalSeconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = Math.floor(safeSeconds % 60);
+  const centiseconds = Math.floor((safeSeconds - Math.floor(safeSeconds)) * 100);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}`;
+};
+
+const convertPlainLyricsToLrc = (rawLyrics = '', lineStepSeconds = 4) => {
+  const rows = String(rawLyrics || '')
+    .split('\n')
+    .map((row) => row.trim())
+    .filter(Boolean);
+
+  if (!rows.length) return '';
+
+  return rows
+    .map((row, index) => `[${formatLrcTimestamp(index * lineStepSeconds)}]${row}`)
+    .join('\n');
+};
 
 const normalizeInstagramPostUrl = (url = '') => {
   const trimmed = String(url).trim();
@@ -222,6 +289,7 @@ function App() {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [instagramActionLoading, setInstagramActionLoading] = useState(false);
+  const [instagramConfig, setInstagramConfig] = useState({ checked: false, configured: true, missing: [] });
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [memberUsernameDrafts, setMemberUsernameDrafts] = useState({});
@@ -1012,6 +1080,13 @@ function App() {
   }, [user]);
 
   useEffect(() => {
+    if (!user?._id) return;
+    if (user.role !== 'artist' && user.role !== 'admin') return;
+    checkInstagramServerConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id, user?.role]);
+
+  useEffect(() => {
     if (view === 'admin' && user?.role === 'admin') {
       fetchMembers();
       fetchAllSongs();
@@ -1520,6 +1595,13 @@ function App() {
     try {
       const formData = new FormData();
       formData.append('bio', settingsBio || '');
+      const sanitizedInstagramHandle = String(settingsInstagramHandle || '')
+        .trim()
+        .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '')
+        .replace(/^@+/, '')
+        .split(/[/?#]/)[0]
+        .trim();
+      formData.append('instagramHandle', sanitizedInstagramHandle);
       if (settingsPic) formData.append('profilePic', settingsPic);
 
       const res = await fetch(`${API_URL}/users/${user._id}/profile`, {
@@ -1530,6 +1612,7 @@ function App() {
       if (!res.ok) return alert(data.error || 'No se pudo actualizar tu perfil');
 
       setUser(normalizeArtistEntity(data.user));
+  setSettingsInstagramHandle(data.user?.instagramHandle || sanitizedInstagramHandle || '');
       setSettingsPic(null);
       alert('Perfil actualizado');
     } catch (err) {
@@ -1556,8 +1639,25 @@ function App() {
     }
   };
 
+  const checkInstagramServerConfig = async () => {
+    try {
+      const res = await fetch(`${API_URL}/health/instagram-config`);
+      const data = await res.json().catch(() => ({}));
+      const configured = Boolean(data?.instagram?.configured ?? data?.ok);
+      const missing = Array.isArray(data?.instagram?.missing) ? data.instagram.missing : [];
+      setInstagramConfig({ checked: true, configured, missing });
+    } catch (_) {
+      setInstagramConfig({ checked: true, configured: true, missing: [] });
+    }
+  };
+
   const connectInstagram = async () => {
     if (!user?._id) return;
+    if (instagramConfig.checked && !instagramConfig.configured) {
+      const missing = instagramConfig.missing?.length ? ` (${instagramConfig.missing.join(', ')})` : '';
+      alert(`La sincronización automática de Instagram no está habilitada en el servidor${missing}.\n\nPuedes guardar tu @usuario manualmente en este mismo panel y se mostrará en tu perfil.`);
+      return;
+    }
     setInstagramActionLoading(true);
     try {
       const frontend = encodeURIComponent(window.location.origin);
@@ -3452,7 +3552,25 @@ function App() {
             {(user.role === 'artist' || user.role === 'admin') && (
               <>
                 <div>
-                  <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Instagram vinculado</p>
+                  <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Instagram en tu perfil</p>
+                  <input
+                    type="text"
+                    value={settingsInstagramHandle}
+                    onChange={(e) => setSettingsInstagramHandle(e.target.value)}
+                    placeholder="@tuusuario o enlace de Instagram"
+                    className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
+                  />
+                  <p className="mt-2 text-xs text-gray-500">Guárdalo y aparecerá en tu perfil público aunque no uses sincronización automática.</p>
+                </div>
+
+                <div>
+                  <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Sincronización automática</p>
+                  {instagramConfig.checked && !instagramConfig.configured && (
+                    <div className="mb-3 w-full bg-amber-500/10 border border-amber-400/30 p-3 rounded-2xl">
+                      <p className="text-[11px] font-bold text-amber-200 uppercase tracking-widest">No disponible en servidor</p>
+                      <p className="text-xs text-amber-100/90 mt-1">Faltan variables de Instagram ({instagramConfig.missing.join(', ')}). Puedes usar el campo manual de arriba para mostrar tu cuenta en el perfil.</p>
+                    </div>
+                  )}
                   {user.instagramLinked ? (
                     <div className="space-y-3">
                       <div className="w-full bg-black/40 p-4 rounded-2xl border border-white/10">
@@ -3464,7 +3582,7 @@ function App() {
                         <button
                           type="button"
                           onClick={syncInstagramNow}
-                          disabled={instagramActionLoading}
+                          disabled={instagramActionLoading || (instagramConfig.checked && !instagramConfig.configured)}
                           className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
                         >
                           {instagramActionLoading ? 'Sincronizando...' : 'Sincronizar ahora'}
@@ -3483,7 +3601,7 @@ function App() {
                     <button
                       type="button"
                       onClick={connectInstagram}
-                      disabled={instagramActionLoading}
+                      disabled={instagramActionLoading || (instagramConfig.checked && !instagramConfig.configured)}
                       className="px-4 py-3 rounded-xl bg-pink-500/80 hover:bg-pink-500 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
                     >
                       {instagramActionLoading ? 'Conectando...' : 'Conectar Instagram'}
@@ -3810,6 +3928,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
   const [collaborators, setCollaborators] = useState([]);
   const [panelGradient, setPanelGradient] = useState(getRandomAlbumGradient());
   const [saving, setSaving] = useState(false);
+  const [lrcAiLoading, setLrcAiLoading] = useState(false);
   const collabTimerRef = useRef({});
 
   useEffect(() => {
@@ -3830,6 +3949,8 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
   useEffect(() => () => {
     Object.values(collabTimerRef.current || {}).forEach((timerId) => clearTimeout(timerId));
   }, []);
+
+  const lyricsDisplay = useMemo(() => parseLyricsForDisplay(lyrics), [lyrics]);
 
   if (!song) return null;
 
@@ -3886,6 +4007,54 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
     });
     setSaving(false);
     setIsEditing(false);
+  };
+
+  const handleConvertLyricsToLrc = () => {
+    const source = String(lyrics || '').trim();
+    if (!source) {
+      alert('Primero escribe o pega una letra para convertir');
+      return;
+    }
+    if (containsLrcTimestamps(source)) {
+      alert('Esta letra ya parece estar en formato LRC');
+      return;
+    }
+    setLyrics(convertPlainLyricsToLrc(source));
+    alert('Letra convertida a formato LRC con tiempos base');
+  };
+
+  const handleGenerateLrcWithAi = async () => {
+    const source = String(lyrics || '').trim();
+    if (!source) {
+      alert('Primero escribe o pega una letra para generar LRC con IA');
+      return;
+    }
+    if (!song?.audioUrl) {
+      alert('Esta canción no tiene audio disponible para análisis de IA');
+      return;
+    }
+
+    setLrcAiLoading(true);
+    try {
+      const payload = { lyrics: source, audioUrl: song.audioUrl, mode: 'perfect' };
+      const res = await fetch(`${API_URL}/ai/lyrics/to-lrc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.lrc) {
+        alert(data.error || 'No se pudo generar LRC con IA');
+        return;
+      }
+      setLyrics(data.lrc);
+      alert('LRC generado con IA');
+    } catch (error) {
+      console.error(error);
+      alert('Error al generar LRC con IA');
+    } finally {
+      setLrcAiLoading(false);
+    }
   };
 
   return (
@@ -3960,14 +4129,49 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
             <div className="md:col-span-2">
               <h3 className="text-3xl font-black mb-4">Letra</h3>
               {isEditing ? (
-                <textarea
-                  value={lyrics}
-                  onChange={(e) => setLyrics(e.target.value)}
-                  className="w-full h-80 bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
-                  placeholder="Escribe la letra aqui..."
-                />
+                <div>
+                  <textarea
+                    value={lyrics}
+                    onChange={(e) => setLyrics(e.target.value)}
+                    className="w-full h-80 bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                    placeholder="Escribe la letra (texto normal o LRC: [mm:ss.xx]Linea)"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleConvertLyricsToLrc}
+                    className="mt-3 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+                  >
+                    Convertir a LRC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGenerateLrcWithAi}
+                    disabled={lrcAiLoading}
+                    className="mt-3 ml-2 px-4 py-2 rounded-xl bg-yellow-500/80 hover:bg-yellow-500 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
+                  >
+                    {lrcAiLoading ? 'Analizando...' : 'Generar LRC con IA'}
+                  </button>
+                  <p className="text-[11px] text-gray-400 mt-2">Tip: formato LRC ejemplo [00:12.50]Primera línea. Si pegas texto normal también se mostrará bien.</p>
+                </div>
               ) : (
-                <p className="whitespace-pre-wrap text-lg leading-relaxed text-gray-200">{lyrics || 'Esta cancion aun no tiene letra cargada.'}</p>
+                lyricsDisplay.lines.length ? (
+                  <div className="space-y-2">
+                    {lyricsDisplay.isLrc ? (
+                      lyricsDisplay.lines.map((line) => (
+                        <div key={line.id} className="flex items-baseline gap-3 rounded-xl bg-black/20 px-3 py-2">
+                          <span className="text-[11px] font-black uppercase tracking-widest text-yellow-300/90 min-w-[68px]">[{line.timeLabel}]</span>
+                          <p className="text-lg leading-relaxed text-gray-100 whitespace-pre-wrap">{line.text || '...'}</p>
+                        </div>
+                      ))
+                    ) : (
+                      lyricsDisplay.lines.map((line) => (
+                        <p key={line.id} className="whitespace-pre-wrap text-lg leading-relaxed text-gray-200">{line.text}</p>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap text-lg leading-relaxed text-gray-200">Esta cancion aun no tiene letra cargada.</p>
+                )
               )}
             </div>
 
@@ -4604,6 +4808,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [lrcAiLoading, setLrcAiLoading] = useState(false);
   const [artistId, setArtistId] = useState(userId);
   const [collaborators, setCollaborators] = useState([]);
   const collabTimerRef = useRef({});
@@ -4639,6 +4844,57 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   const selectCollaboratorUser = (i, u) => {
     if (collabTimerRef.current[i]) clearTimeout(collabTimerRef.current[i]);
     setCollaborators(prev => prev.map((c, idx) => idx === i ? { ...c, name: u.username, userId: u._id, suggestions: [] } : c));
+  };
+
+  const handleConvertLyricsToLrc = () => {
+    const source = String(lyrics || '').trim();
+    if (!source) {
+      alert('Primero escribe o pega una letra para convertir');
+      return;
+    }
+    if (containsLrcTimestamps(source)) {
+      alert('Esta letra ya parece estar en formato LRC');
+      return;
+    }
+    setLyrics(convertPlainLyricsToLrc(source));
+    alert('Letra convertida a formato LRC con tiempos base');
+  };
+
+  const handleGenerateLrcWithAi = async () => {
+    const source = String(lyrics || '').trim();
+    if (!source) {
+      alert('Primero escribe o pega una letra para generar LRC con IA');
+      return;
+    }
+    if (!audioFile) {
+      alert('Selecciona primero el audio para que la IA pueda analizar la canción');
+      return;
+    }
+
+    setLrcAiLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('lyrics', source);
+      formData.append('audio', audioFile);
+      formData.append('mode', 'perfect');
+
+      const res = await fetch(`${API_URL}/ai/lyrics/to-lrc`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.lrc) {
+        alert(data.error || 'No se pudo generar LRC con IA');
+        return;
+      }
+      setLyrics(data.lrc);
+      alert('LRC generado con IA');
+    } catch (error) {
+      console.error(error);
+      alert('Error al generar LRC con IA');
+    } finally {
+      setLrcAiLoading(false);
+    }
   };
 
   const handleUpload = async (e) => {
@@ -4723,7 +4979,25 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
 
           <input type="text" placeholder="NOMBRE DEL TRACK" required className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold" onChange={(e) => setTitle(e.target.value)} />
           <textarea placeholder="DESCRIPCION" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20" onChange={(e) => setDesc(e.target.value)} />
-          <textarea placeholder="LETRA (OPCIONAL)" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-32" onChange={(e) => setLyrics(e.target.value)} />
+          <div>
+            <textarea value={lyrics} placeholder="LETRA (OPCIONAL) - TEXTO NORMAL O LRC [mm:ss.xx]" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-32" onChange={(e) => setLyrics(e.target.value)} />
+            <button
+              type="button"
+              onClick={handleConvertLyricsToLrc}
+              className="mt-3 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+            >
+              Convertir a LRC
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateLrcWithAi}
+              disabled={lrcAiLoading}
+              className="mt-3 ml-2 px-4 py-2 rounded-xl bg-yellow-500/80 hover:bg-yellow-500 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
+            >
+              {lrcAiLoading ? 'Analizando...' : 'Generar LRC con IA'}
+            </button>
+            <p className="text-[10px] text-gray-500 mt-2">Si pegas LRC con timestamps, se mostrará sincronizable. Si pegas texto normal, se verá como letra común.</p>
+          </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">

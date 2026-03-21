@@ -8,6 +8,8 @@ const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const path = require('path');
+const OpenAI = require('openai');
+const { toFile } = require('openai/uploads');
 
 const app = express();
 
@@ -25,10 +27,235 @@ const Album = require('./models/Album');
 const IG_APP_ID = process.env.INSTAGRAM_APP_ID || '';
 const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || '';
 const IG_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const IG_SCOPES = 'user_profile,user_media';
 const IG_SYNC_INTERVAL_MS = Number(process.env.IG_SYNC_INTERVAL_MS || 5 * 60 * 1000);
 const FRONTEND_APP_URL = (process.env.FRONTEND_APP_URL || '').replace(/\/$/, '');
 const FRONTEND_WEB_URL = (process.env.FRONTEND_URL || process.env.FRONTEND_APP_URL || '').replace(/\/$/, '');
+const openaiClient = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+
+const LRC_WORD_NORMALIZE_REGEX = /[^a-z0-9\u00c0-\u024f]+/gi;
+
+const normalizeWord = (value = '') => String(value || '')
+  .toLowerCase()
+  .replace(LRC_WORD_NORMALIZE_REGEX, '')
+  .trim();
+
+const formatLrcTimestamp = (seconds = 0) => {
+  const safe = Math.max(0, Number(seconds) || 0);
+  const mm = Math.floor(safe / 60);
+  const ss = Math.floor(safe % 60);
+  const cs = Math.floor((safe - Math.floor(safe)) * 100);
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+};
+
+const buildBaseAlignedRows = (lyricsText = '', wordTimestamps = [], fallbackDurationSec = 0) => {
+  const lines = String(lyricsText || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) return [];
+
+  const transcriptWords = (Array.isArray(wordTimestamps) ? wordTimestamps : [])
+    .map((item) => ({
+      word: normalizeWord(item?.word || ''),
+      start: Number(item?.start ?? item?.start_time ?? item?.startMs ?? NaN),
+    }))
+    .filter((item) => item.word && Number.isFinite(item.start));
+
+  const fallbackStep = Math.max(2, Math.floor((Number(fallbackDurationSec) || (lines.length * 4)) / Math.max(lines.length, 1)));
+
+  if (!transcriptWords.length) {
+    return lines.map((line, index) => ({ line, time: index * fallbackStep }));
+  }
+
+  let cursor = 0;
+  const lrcRows = [];
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    const tokens = line
+      .split(/\s+/)
+      .map((token) => normalizeWord(token))
+      .filter(Boolean);
+
+    let bestIndex = -1;
+    let bestScore = -1;
+    const seedTokens = tokens.slice(0, Math.min(tokens.length, 6));
+
+    for (let start = cursor; start < transcriptWords.length; start += 1) {
+      let score = 0;
+      let searchFrom = start;
+
+      for (const seed of seedTokens) {
+        const found = transcriptWords.findIndex((entry, idx) => idx >= searchFrom && idx <= (searchFrom + 14) && entry.word === seed);
+        if (found >= 0) {
+          score += 1;
+          searchFrom = found + 1;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = start;
+      }
+
+      if (bestScore >= Math.max(2, seedTokens.length - 1)) break;
+    }
+
+    let lineTime = lineIndex * fallbackStep;
+
+    if (bestIndex >= 0 && bestScore > 0) {
+      lineTime = transcriptWords[bestIndex].start;
+      cursor = Math.min(transcriptWords.length - 1, bestIndex + 1);
+    } else if (lrcRows.length > 0) {
+      const prevTs = lrcRows[lrcRows.length - 1].time;
+      lineTime = prevTs + fallbackStep;
+    }
+
+    lrcRows.push({ line, time: lineTime });
+  }
+
+  return lrcRows;
+};
+
+const normalizeMonotonicRows = (rows = [], durationSec = 0) => {
+  const safeDuration = Math.max(0, Number(durationSec) || 0);
+  const minGap = 0.12;
+  let prev = -minGap;
+
+  return (Array.isArray(rows) ? rows : []).map((row, index) => {
+    let time = Number(row?.time);
+    if (!Number.isFinite(time)) {
+      time = Math.max(0, prev + minGap);
+    }
+
+    if (safeDuration > 0) {
+      const hardMax = Math.max(0, safeDuration - 0.2);
+      time = Math.min(time, hardMax);
+    }
+
+    time = Math.max(time, prev + minGap);
+    prev = time;
+
+    return {
+      line: String(row?.line || '').trim(),
+      time,
+      index,
+    };
+  }).filter((item) => item.line);
+};
+
+const rowsToLrc = (rows = []) => (Array.isArray(rows) ? rows : [])
+  .map((item) => `[${formatLrcTimestamp(item.time)}]${item.line}`)
+  .join('\n');
+
+const buildTranscriptAnchors = (wordTimestamps = [], limit = 550) => {
+  const words = (Array.isArray(wordTimestamps) ? wordTimestamps : [])
+    .map((item) => ({
+      word: String(item?.word || '').trim(),
+      start: Number(item?.start ?? item?.start_time ?? item?.startMs ?? NaN),
+    }))
+    .filter((item) => item.word && Number.isFinite(item.start));
+
+  if (!words.length) return [];
+
+  const step = Math.max(1, Math.floor(words.length / limit));
+  const anchors = [];
+  for (let i = 0; i < words.length; i += step) {
+    anchors.push({ t: Number(words[i].start.toFixed(2)), w: words[i].word });
+    if (anchors.length >= limit) break;
+  }
+  return anchors;
+};
+
+const safeJsonParse = (raw = '') => {
+  try {
+    return JSON.parse(String(raw || ''));
+  } catch (_) {
+    return null;
+  }
+};
+
+const refineRowsWithAi = async ({ lines, baseRows, wordTimestamps, durationSec, mode = 'balanced' }) => {
+  if (!openaiClient) return null;
+
+  const anchorLimit = mode === 'perfect' ? 900 : 550;
+  const anchors = buildTranscriptAnchors(wordTimestamps, anchorLimit);
+  if (!anchors.length || !lines.length) return null;
+
+  const hints = baseRows.map((row, idx) => ({ index: idx, line: row.line, approxStartSec: Number(row.time.toFixed(2)) }));
+
+  const response = await openaiClient.chat.completions.create({
+    model: mode === 'perfect' ? 'gpt-4.1' : 'gpt-4.1-mini',
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'Alineas letras a tiempos de audio. Devuelve SOLO JSON válido con esta forma: {"rows":[{"index":0,"startSec":0.0}]}. Reglas: índices consecutivos desde 0; startSec creciente; no inventar líneas; usa anchors y approxStartSec como guía.'
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          durationSec: Number(durationSec || 0),
+          lines: lines.map((line, index) => ({ index, line })),
+          approx: hints,
+          transcriptAnchors: anchors,
+        }),
+      },
+    ],
+  });
+
+  const raw = response?.choices?.[0]?.message?.content || '';
+  const parsed = safeJsonParse(raw);
+  const rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
+  if (!rows.length) return null;
+
+  const mapped = lines.map((line, index) => {
+    const found = rows.find((item) => Number(item?.index) === index);
+    return {
+      line,
+      time: Number(found?.startSec),
+    };
+  });
+
+  return mapped;
+};
+
+const alignLyricsLinesToWordTimestamps = async (lyricsText = '', wordTimestamps = [], fallbackDurationSec = 0, mode = 'balanced') => {
+  const lines = String(lyricsText || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) return '';
+
+  const baseRows = buildBaseAlignedRows(lyricsText, wordTimestamps, fallbackDurationSec);
+  let finalRows = normalizeMonotonicRows(baseRows, fallbackDurationSec);
+
+  try {
+    const passes = mode === 'perfect' ? 2 : 1;
+    for (let pass = 0; pass < passes; pass += 1) {
+      // On subsequent passes, use previous refined output as additional hint.
+      const refinedRows = await refineRowsWithAi({
+        lines,
+        baseRows: finalRows,
+        wordTimestamps,
+        durationSec: fallbackDurationSec,
+        mode,
+      });
+      if (refinedRows?.length) {
+        finalRows = normalizeMonotonicRows(refinedRows, fallbackDurationSec);
+      }
+    }
+  } catch (error) {
+    console.error('AI LRC refine warning:', error.message);
+  }
+
+  return rowsToLrc(finalRows);
+};
 
 const escapeHtml = (value = '') => String(value)
   .replace(/&/g, '&amp;')
@@ -452,6 +679,41 @@ app.get('/health/upload-config', async (req, res) => {
   }
 });
 
+app.get('/health/instagram-config', (req, res) => {
+  const hasAppId = Boolean(IG_APP_ID);
+  const hasAppSecret = Boolean(IG_APP_SECRET);
+  const hasRedirectUri = Boolean(IG_REDIRECT_URI);
+  const configured = hasAppId && hasAppSecret && hasRedirectUri;
+
+  return res.status(configured ? 200 : 500).json({
+    ok: configured,
+    instagram: {
+      configured,
+      hasAppId,
+      hasAppSecret,
+      hasRedirectUri,
+      redirectUri: IG_REDIRECT_URI || null,
+      missing: [
+        !hasAppId ? 'INSTAGRAM_APP_ID' : null,
+        !hasAppSecret ? 'INSTAGRAM_APP_SECRET' : null,
+        !hasRedirectUri ? 'INSTAGRAM_REDIRECT_URI' : null,
+      ].filter(Boolean),
+    },
+  });
+});
+
+app.get('/health/ai-config', (req, res) => {
+  const configured = Boolean(OPENAI_API_KEY);
+  return res.status(configured ? 200 : 500).json({
+    ok: configured,
+    ai: {
+      configured,
+      provider: 'openai',
+      missing: configured ? [] : ['OPENAI_API_KEY'],
+    },
+  });
+});
+
 // Configuración de Almacenamiento
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -464,6 +726,76 @@ const storage = new CloudinaryStorage({
   },
 });
 const upload = multer({ storage: storage });
+const uploadMemory = multer({ storage: multer.memoryStorage() });
+
+app.post('/ai/lyrics/to-lrc', (req, res) => {
+  uploadMemory.single('audio')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(500).json({ error: 'No se pudo procesar el archivo de audio' });
+    }
+
+    try {
+      if (!openaiClient) {
+        return res.status(500).json({ error: 'IA no configurada en el servidor (falta OPENAI_API_KEY)' });
+      }
+
+      const lyrics = String(req.body?.lyrics || '').trim();
+      const audioUrl = String(req.body?.audioUrl || '').trim();
+      const requestedMode = String(req.body?.mode || 'balanced').toLowerCase();
+      const mode = requestedMode === 'perfect' ? 'perfect' : 'balanced';
+      if (!lyrics) {
+        return res.status(400).json({ error: 'Falta la letra para generar LRC' });
+      }
+
+      let audioBuffer = null;
+      let audioName = 'audio.mp3';
+
+      if (req.file?.buffer?.length) {
+        audioBuffer = req.file.buffer;
+        audioName = req.file.originalname || 'audio.mp3';
+      } else if (/^https?:\/\//i.test(audioUrl)) {
+        const audioResponse = await fetch(audioUrl);
+        if (!audioResponse.ok) {
+          return res.status(400).json({ error: 'No se pudo descargar el audio desde la URL' });
+        }
+        const arrayBuffer = await audioResponse.arrayBuffer();
+        audioBuffer = Buffer.from(arrayBuffer);
+      }
+
+      if (!audioBuffer?.length) {
+        return res.status(400).json({ error: 'Debes enviar un archivo de audio o una audioUrl válida' });
+      }
+
+      const transcription = await openaiClient.audio.transcriptions.create({
+        file: await toFile(audioBuffer, audioName),
+        model: 'gpt-4o-mini-transcribe',
+        response_format: 'verbose_json',
+        timestamp_granularities: ['word'],
+      });
+
+      const durationSec = Number(transcription?.duration || 0);
+      const wordTimestamps = Array.isArray(transcription?.words) ? transcription.words : [];
+      const lrc = await alignLyricsLinesToWordTimestamps(lyrics, wordTimestamps, durationSec, mode);
+
+      if (!lrc.trim()) {
+        return res.status(500).json({ error: 'No se pudo generar el LRC automáticamente' });
+      }
+
+      return res.json({
+        message: 'LRC generado',
+        lrc,
+        meta: {
+          mode,
+          durationSec,
+          usedWordTimestamps: wordTimestamps.length,
+        },
+      });
+    } catch (error) {
+      console.error('AI LRC generation error:', error.message);
+      return res.status(500).json({ error: 'Error al generar LRC con IA' });
+    }
+  });
+});
 
 const parseArrayField = (value) => {
   if (Array.isArray(value)) return value;
