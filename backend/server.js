@@ -28,6 +28,7 @@ const IG_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || '';
 const IG_SCOPES = 'user_profile,user_media';
 const IG_SYNC_INTERVAL_MS = Number(process.env.IG_SYNC_INTERVAL_MS || 5 * 60 * 1000);
 const FRONTEND_APP_URL = (process.env.FRONTEND_APP_URL || '').replace(/\/$/, '');
+const FRONTEND_WEB_URL = (process.env.FRONTEND_URL || process.env.FRONTEND_APP_URL || '').replace(/\/$/, '');
 
 const escapeHtml = (value = '') => String(value)
   .replace(/&/g, '&amp;')
@@ -1801,6 +1802,7 @@ app.get('/users/:userId/instagram/connect-url', async (req, res) => {
   try {
     const { userId } = req.params;
     const requesterId = req.query.requesterId;
+    const frontend = String(req.query.frontend || '').trim().replace(/\/$/, '');
 
     if (!IG_APP_ID || !IG_APP_SECRET || !IG_REDIRECT_URI) {
       return res.status(500).json({ error: 'Instagram no está configurado en el servidor' });
@@ -1820,7 +1822,11 @@ app.get('/users/:userId/instagram/connect-url', async (req, res) => {
     }
 
     const state = jwt.sign(
-      { type: 'instagram-connect', userId },
+      {
+        type: 'instagram-connect',
+        userId,
+        frontendUrl: /^https?:\/\//i.test(frontend) ? frontend : '',
+      },
       process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '15m' }
     );
@@ -1841,7 +1847,7 @@ app.get('/users/:userId/instagram/connect-url', async (req, res) => {
 });
 
 app.get('/auth/instagram/callback', async (req, res) => {
-  const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+  let frontendBase = FRONTEND_WEB_URL || 'http://localhost:3000';
   try {
     const code = String(req.query.code || '');
     const state = String(req.query.state || '');
@@ -1852,6 +1858,10 @@ app.get('/auth/instagram/callback', async (req, res) => {
     const decoded = jwt.verify(state, process.env.JWT_SECRET || 'dev-secret');
     if (decoded?.type !== 'instagram-connect' || !decoded?.userId) {
       return res.redirect(`${frontendBase}?view=ajustes&ig=error`);
+    }
+
+    if (decoded?.frontendUrl && /^https?:\/\//i.test(String(decoded.frontendUrl))) {
+      frontendBase = String(decoded.frontendUrl).replace(/\/$/, '');
     }
 
     const tokenPayload = new URLSearchParams({
@@ -2418,4 +2428,41 @@ server.on('error', (err) => {
     console.error('❌ Error del servidor:', err);
   }
   process.exit(1);
+});
+
+app.put('/users/:userId/password', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId, currentPassword, newPassword } = req.body;
+
+    if (!requesterId || !currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Faltan requesterId, contraseña actual o nueva contraseña' });
+    }
+
+    if (String(requesterId) !== String(userId)) {
+      return res.status(403).json({ error: 'No tienes permiso para cambiar esta contraseña' });
+    }
+
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' });
+    }
+
+    const user = await User.findById(userId).select('_id password');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const validCurrent = await bcrypt.compare(String(currentPassword), user.password || '');
+    if (!validCurrent) {
+      return res.status(401).json({ error: 'La contraseña actual no es correcta' });
+    }
+
+    user.password = await bcrypt.hash(String(newPassword), 10);
+    await user.save();
+
+    return res.json({ message: 'Contraseña actualizada correctamente' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al cambiar contraseña' });
+  }
 });

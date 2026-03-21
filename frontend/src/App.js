@@ -217,6 +217,9 @@ function App() {
   const [settingsBio, setSettingsBio] = useState('');
   const [settingsInstagramHandle, setSettingsInstagramHandle] = useState('');
   const [settingsPic, setSettingsPic] = useState(null);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [instagramActionLoading, setInstagramActionLoading] = useState(false);
   const [members, setMembers] = useState([]);
@@ -1557,7 +1560,8 @@ function App() {
     if (!user?._id) return;
     setInstagramActionLoading(true);
     try {
-      const res = await fetch(`${API_URL}/users/${user._id}/instagram/connect-url?requesterId=${user._id}`);
+      const frontend = encodeURIComponent(window.location.origin);
+      const res = await fetch(`${API_URL}/users/${user._id}/instagram/connect-url?requesterId=${user._id}&frontend=${frontend}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) {
         alert(data.error || 'No se pudo iniciar conexión con Instagram');
@@ -1620,6 +1624,51 @@ function App() {
       alert('Error al desvincular Instagram');
     } finally {
       setInstagramActionLoading(false);
+    }
+  };
+
+  const handleChangeOwnPassword = async () => {
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      alert('Completa todos los campos de contraseña');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      alert('La nueva contraseña y la confirmación no coinciden');
+      return;
+    }
+
+    if (String(newPassword).length < 6) {
+      alert('La nueva contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
+    setSettingsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/users/${user._id}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requesterId: user._id,
+          currentPassword,
+          newPassword,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || 'No se pudo cambiar la contraseña');
+        return;
+      }
+
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      showToast('Contraseña actualizada', 'success');
+    } catch (err) {
+      console.error(err);
+      alert('Error al cambiar la contraseña');
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -3445,6 +3494,41 @@ function App() {
               </>
             )}
 
+            <div>
+              <p className="text-xs font-black text-gray-500 uppercase mb-3 tracking-widest">Cambiar contraseña</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Contraseña actual"
+                  className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Nueva contraseña"
+                  className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
+                />
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  placeholder="Confirmar nueva contraseña"
+                  className="w-full bg-black/40 p-4 rounded-2xl border border-white/10 outline-none focus:border-yellow-400 text-white"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleChangeOwnPassword}
+                disabled={settingsLoading}
+                className="mt-3 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
+              >
+                Cambiar contraseña
+              </button>
+            </div>
+
             <div className="flex gap-3">
               <button disabled={settingsLoading} className="flex-1 bg-yellow-400 text-black font-black py-3 px-8 rounded-2xl uppercase tracking-widest text-xs disabled:opacity-60">
                 {settingsLoading ? 'Guardando...' : 'Guardar Ajustes'}
@@ -4111,7 +4195,8 @@ const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenAr
 
   if (!album) return null;
 
-  const isOwner = user && (String(user._id) === String(album.artist?._id) || user.role === 'admin');
+  const albumArtistId = album?.artist?._id || album?.artist;
+  const isOwner = user && (String(user._id) === String(albumArtistId) || user.role === 'admin');
 
   const resolveSongArtist = (song) => {
     if (song?.artist?.username) return song.artist;
