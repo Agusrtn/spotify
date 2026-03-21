@@ -464,6 +464,29 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage: storage });
 
+const parseArrayField = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  return [];
+};
+
+const parseBooleanField = (value, defaultValue = false) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    if (lower === 'true' || lower === '1') return true;
+    if (lower === 'false' || lower === '0') return false;
+  }
+  return defaultValue;
+};
+
 // --- RUTAS ---
 
 // RUTA DE SUBIDA (DROP NEW HIT)
@@ -806,92 +829,107 @@ app.get('/my-playlists', async (req, res) => {
   }
 });
 
-app.post('/my-playlists', async (req, res) => {
-  try {
-    const { userId, name, description, coverUrl, songIds, isPublic } = req.body;
-    if (!userId || !name) {
-      return res.status(400).json({ error: 'Faltan datos para crear playlist' });
+app.post('/my-playlists', (req, res) => {
+  upload.single('cover')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(500).json({ error: `Error al subir portada: ${uploadErr.message || 'fallo de Cloudinary'}` });
     }
 
-    const user = await User.findById(userId).select('_id');
-    if (!user) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
-    }
+    try {
+      const { userId, name, description, coverUrl, isPublic } = req.body;
+      const songIds = parseArrayField(req.body.songIds);
+      if (!userId || !name) {
+        return res.status(400).json({ error: 'Faltan datos para crear playlist' });
+      }
 
-    const playlist = new Playlist({
-      name,
-      description: description || '',
-      coverUrl: coverUrl || '',
-      creator: userId,
-      songs: Array.isArray(songIds) ? songIds : [],
-      isDefault: false,
-      isPublic: typeof isPublic === 'boolean' ? isPublic : true,
-    });
+      const user = await User.findById(userId).select('_id');
+      if (!user) {
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
 
-    await playlist.save();
-    const populatedPlaylist = await Playlist.findById(playlist._id)
-      .populate('creator', 'username _id')
-      .populate({
-        path: 'songs',
-        populate: [
-          { path: 'artist', select: 'username _id profilePic' },
-          { path: 'collaborators.userId', select: 'username _id' },
-        ],
+      const playlist = new Playlist({
+        name,
+        description: description || '',
+        coverUrl: req.file?.path || coverUrl || '',
+        creator: userId,
+        songs: songIds,
+        isDefault: false,
+        isPublic: parseBooleanField(isPublic, true),
       });
 
-    return res.status(201).json({ message: 'Playlist creada', playlist: populatedPlaylist });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Error al crear tu playlist' });
-  }
+      await playlist.save();
+      const populatedPlaylist = await Playlist.findById(playlist._id)
+        .populate('creator', 'username _id')
+        .populate({
+          path: 'songs',
+          populate: [
+            { path: 'artist', select: 'username _id profilePic' },
+            { path: 'collaborators.userId', select: 'username _id' },
+          ],
+        });
+
+      return res.status(201).json({ message: 'Playlist creada', playlist: populatedPlaylist });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al crear tu playlist' });
+    }
+  });
 });
 
-app.put('/my-playlists/:playlistId', async (req, res) => {
-  try {
-    const { playlistId } = req.params;
-    const { userId, name, description, coverUrl, songIds, isPublic } = req.body;
-    if (!userId) {
-      return res.status(400).json({ error: 'Falta userId' });
+app.put('/my-playlists/:playlistId', (req, res) => {
+  upload.single('cover')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(500).json({ error: `Error al subir portada: ${uploadErr.message || 'fallo de Cloudinary'}` });
     }
 
-    const playlist = await Playlist.findById(playlistId);
-    if (!playlist) {
-      return res.status(404).json({ error: 'Playlist no encontrada' });
+    try {
+      const { playlistId } = req.params;
+      const { userId, name, description, coverUrl, isPublic } = req.body;
+      const songIds = parseArrayField(req.body.songIds);
+      if (!userId) {
+        return res.status(400).json({ error: 'Falta userId' });
+      }
+
+      const playlist = await Playlist.findById(playlistId);
+      if (!playlist) {
+        return res.status(404).json({ error: 'Playlist no encontrada' });
+      }
+
+      const user = await User.findById(userId).select('_id role');
+      if (!user) {
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      const canEdit = String(playlist.creator) === String(userId) || user.role === 'admin';
+      if (!canEdit) {
+        return res.status(403).json({ error: 'No tienes permisos para editar esta playlist' });
+      }
+
+      if (typeof name === 'string' && name.trim()) playlist.name = name.trim();
+      if (typeof description === 'string') playlist.description = description;
+      if (req.file?.path) playlist.coverUrl = req.file.path;
+      else if (typeof coverUrl === 'string') playlist.coverUrl = coverUrl;
+      if (songIds.length > 0 || req.body.songIds !== undefined) playlist.songs = songIds;
+      if (isPublic !== undefined) playlist.isPublic = parseBooleanField(isPublic, playlist.isPublic);
+      playlist.isDefault = false;
+
+      await playlist.save();
+      const populatedPlaylist = await Playlist.findById(playlist._id)
+        .populate('creator', 'username _id')
+        .populate({
+          path: 'songs',
+          populate: [
+            { path: 'artist', select: 'username _id profilePic' },
+            { path: 'collaborators.userId', select: 'username _id' },
+          ],
+        });
+
+      return res.json({ message: 'Playlist actualizada', playlist: populatedPlaylist });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al actualizar tu playlist' });
     }
-
-    const user = await User.findById(userId).select('_id role');
-    if (!user) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
-    }
-
-    const canEdit = String(playlist.creator) === String(userId) || user.role === 'admin';
-    if (!canEdit) {
-      return res.status(403).json({ error: 'No tienes permisos para editar esta playlist' });
-    }
-
-    if (typeof name === 'string' && name.trim()) playlist.name = name.trim();
-    if (typeof description === 'string') playlist.description = description;
-    if (typeof coverUrl === 'string') playlist.coverUrl = coverUrl;
-    if (Array.isArray(songIds)) playlist.songs = songIds;
-    if (typeof isPublic === 'boolean') playlist.isPublic = isPublic;
-    playlist.isDefault = false;
-
-    await playlist.save();
-    const populatedPlaylist = await Playlist.findById(playlist._id)
-      .populate('creator', 'username _id')
-      .populate({
-        path: 'songs',
-        populate: [
-          { path: 'artist', select: 'username _id profilePic' },
-          { path: 'collaborators.userId', select: 'username _id' },
-        ],
-      });
-
-    return res.json({ message: 'Playlist actualizada', playlist: populatedPlaylist });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Error al actualizar tu playlist' });
-  }
+  });
 });
 
 app.delete('/my-playlists/:playlistId', async (req, res) => {
@@ -1013,83 +1051,98 @@ app.delete('/my-playlists/:playlistId/songs/:songId', async (req, res) => {
   }
 });
 
-app.post('/admin/playlists', async (req, res) => {
-  try {
-    const { requesterId, name, description, coverUrl, songIds, isDefault } = req.body;
-    if (!requesterId || !name) {
-      return res.status(400).json({ error: 'Faltan datos para crear playlist' });
+app.post('/admin/playlists', (req, res) => {
+  upload.single('cover')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(500).json({ error: `Error al subir portada: ${uploadErr.message || 'fallo de Cloudinary'}` });
     }
 
-    const requester = await User.findById(requesterId).select('_id role');
-    if (!requester || requester.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo admins pueden crear playlists' });
-    }
+    try {
+      const { requesterId, name, description, coverUrl, isDefault } = req.body;
+      const songIds = parseArrayField(req.body.songIds);
+      if (!requesterId || !name) {
+        return res.status(400).json({ error: 'Faltan datos para crear playlist' });
+      }
 
-    const playlist = new Playlist({
-      name,
-      description: description || '',
-      coverUrl: coverUrl || '',
-      creator: requesterId,
-      songs: Array.isArray(songIds) ? songIds : [],
-      isDefault: Boolean(isDefault),
-      isPublic: true,
-    });
+      const requester = await User.findById(requesterId).select('_id role');
+      if (!requester || requester.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo admins pueden crear playlists' });
+      }
 
-    await playlist.save();
-    const populatedPlaylist = await Playlist.findById(playlist._id)
-      .populate('creator', 'username _id')
-      .populate({
-        path: 'songs',
-        populate: [
-          { path: 'artist', select: 'username _id profilePic' },
-          { path: 'collaborators.userId', select: 'username _id' },
-        ],
+      const playlist = new Playlist({
+        name,
+        description: description || '',
+        coverUrl: req.file?.path || coverUrl || '',
+        creator: requesterId,
+        songs: songIds,
+        isDefault: parseBooleanField(isDefault, false),
+        isPublic: true,
       });
 
-    return res.status(201).json({ message: 'Playlist creada', playlist: populatedPlaylist });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Error al crear playlist' });
-  }
+      await playlist.save();
+      const populatedPlaylist = await Playlist.findById(playlist._id)
+        .populate('creator', 'username _id')
+        .populate({
+          path: 'songs',
+          populate: [
+            { path: 'artist', select: 'username _id profilePic' },
+            { path: 'collaborators.userId', select: 'username _id' },
+          ],
+        });
+
+      return res.status(201).json({ message: 'Playlist creada', playlist: populatedPlaylist });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al crear playlist' });
+    }
+  });
 });
 
-app.put('/admin/playlists/:playlistId', async (req, res) => {
-  try {
-    const { playlistId } = req.params;
-    const { requesterId, name, description, coverUrl, songIds, isDefault } = req.body;
-
-    const requester = await User.findById(requesterId).select('_id role');
-    if (!requester || requester.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo admins pueden editar playlists' });
+app.put('/admin/playlists/:playlistId', (req, res) => {
+  upload.single('cover')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(500).json({ error: `Error al subir portada: ${uploadErr.message || 'fallo de Cloudinary'}` });
     }
 
-    const playlist = await Playlist.findById(playlistId);
-    if (!playlist) {
-      return res.status(404).json({ error: 'Playlist no encontrada' });
+    try {
+      const { playlistId } = req.params;
+      const { requesterId, name, description, coverUrl, isDefault } = req.body;
+      const songIds = parseArrayField(req.body.songIds);
+
+      const requester = await User.findById(requesterId).select('_id role');
+      if (!requester || requester.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo admins pueden editar playlists' });
+      }
+
+      const playlist = await Playlist.findById(playlistId);
+      if (!playlist) {
+        return res.status(404).json({ error: 'Playlist no encontrada' });
+      }
+
+      if (typeof name === 'string' && name.trim()) playlist.name = name.trim();
+      if (typeof description === 'string') playlist.description = description;
+      if (req.file?.path) playlist.coverUrl = req.file.path;
+      else if (typeof coverUrl === 'string') playlist.coverUrl = coverUrl;
+      if (songIds.length > 0 || req.body.songIds !== undefined) playlist.songs = songIds;
+      if (isDefault !== undefined) playlist.isDefault = parseBooleanField(isDefault, playlist.isDefault);
+
+      await playlist.save();
+      const populatedPlaylist = await Playlist.findById(playlist._id)
+        .populate('creator', 'username _id')
+        .populate({
+          path: 'songs',
+          populate: [
+            { path: 'artist', select: 'username _id profilePic' },
+            { path: 'collaborators.userId', select: 'username _id' },
+          ],
+        });
+
+      return res.json({ message: 'Playlist actualizada', playlist: populatedPlaylist });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al actualizar playlist' });
     }
-
-    if (typeof name === 'string' && name.trim()) playlist.name = name.trim();
-    if (typeof description === 'string') playlist.description = description;
-    if (typeof coverUrl === 'string') playlist.coverUrl = coverUrl;
-    if (Array.isArray(songIds)) playlist.songs = songIds;
-    if (typeof isDefault === 'boolean') playlist.isDefault = isDefault;
-
-    await playlist.save();
-    const populatedPlaylist = await Playlist.findById(playlist._id)
-      .populate('creator', 'username _id')
-      .populate({
-        path: 'songs',
-        populate: [
-          { path: 'artist', select: 'username _id profilePic' },
-          { path: 'collaborators.userId', select: 'username _id' },
-        ],
-      });
-
-    return res.json({ message: 'Playlist actualizada', playlist: populatedPlaylist });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Error al actualizar playlist' });
-  }
+  });
 });
 
 app.delete('/admin/playlists/:playlistId', async (req, res) => {
@@ -2164,141 +2217,156 @@ app.get('/albums/artist/:artistId', async (req, res) => {
 });
 
 // CREATE album (artist)
-app.post('/albums', async (req, res) => {
-  try {
-    const { title, description, coverUrl, releaseYear, themeGradient, songIds, artistId, userId } = req.body;
-
-    if (!title || !userId) {
-      return res.status(400).json({ error: 'Título y userId son requeridos' });
+app.post('/albums', (req, res) => {
+  upload.single('cover')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(500).json({ error: `Error al subir portada: ${uploadErr.message || 'fallo de Cloudinary'}` });
     }
 
-    const user = await User.findById(userId).select('_id role');
-    if (!user) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
-    }
+    try {
+      const { title, description, coverUrl, releaseYear, themeGradient, artistId, userId } = req.body;
+      const songIds = parseArrayField(req.body.songIds);
 
-    if (user.role !== 'artist' && user.role !== 'admin') {
-      return res.status(403).json({ error: 'Solo artistas y admins pueden crear álbumes' });
-    }
-
-    const targetArtistId = (user.role === 'admin' && artistId) ? artistId : userId;
-    const targetArtist = await User.findById(targetArtistId).select('_id role');
-    if (!targetArtist) {
-      return res.status(404).json({ error: 'Artista no encontrado' });
-    }
-
-    if (targetArtist.role !== 'artist' && targetArtist.role !== 'admin') {
-      return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de artista' });
-    }
-
-    const sanitizedSongIds = Array.isArray(songIds) ? songIds : [];
-    if (sanitizedSongIds.length > 0) {
-      const songsCount = await Song.countDocuments({
-        _id: { $in: sanitizedSongIds },
-        artist: targetArtistId,
-      });
-      if (songsCount !== sanitizedSongIds.length) {
-        return res.status(400).json({ error: 'Solo puedes agregar canciones del artista seleccionado' });
-      }
-    }
-
-    const album = new Album({
-      title,
-      description: description || '',
-      coverUrl: coverUrl || '',
-      releaseYear: Number(releaseYear) || new Date().getFullYear(),
-      themeGradient: String(themeGradient || ''),
-      artist: targetArtistId,
-      songs: sanitizedSongIds,
-    });
-
-    await album.save();
-    await album.populate('artist', 'username profilePic role');
-
-    return res.status(201).json({ album });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Error al crear álbum' });
-  }
-});
-
-// UPDATE album
-app.put('/albums/:albumId', async (req, res) => {
-  try {
-    const { albumId } = req.params;
-    const { title, description, coverUrl, songIds, releaseYear, themeGradient, artistId, userId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'userId es requerido' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
-    }
-
-    const album = await Album.findById(albumId);
-    if (!album) {
-      return res.status(404).json({ error: 'Álbum no encontrado' });
-    }
-
-    if (String(album.artist) !== String(userId) && user.role !== 'admin') {
-      return res.status(403).json({ error: 'No tienes permiso para editar este álbum' });
-    }
-
-    let targetArtistId = String(album.artist);
-    if (artistId !== undefined) {
-      if (user.role !== 'admin') {
-        return res.status(403).json({ error: 'Solo admins pueden cambiar el artista del álbum' });
+      if (!title || !userId) {
+        return res.status(400).json({ error: 'Título y userId son requeridos' });
       }
 
-      const nextArtist = await User.findById(artistId).select('_id role');
-      if (!nextArtist) {
+      const user = await User.findById(userId).select('_id role');
+      if (!user) {
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      if (user.role !== 'artist' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo artistas y admins pueden crear álbumes' });
+      }
+
+      const targetArtistId = (user.role === 'admin' && artistId) ? artistId : userId;
+      const targetArtist = await User.findById(targetArtistId).select('_id role');
+      if (!targetArtist) {
         return res.status(404).json({ error: 'Artista no encontrado' });
       }
 
-      if (nextArtist.role !== 'artist' && nextArtist.role !== 'admin') {
+      if (targetArtist.role !== 'artist' && targetArtist.role !== 'admin') {
         return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de artista' });
       }
 
-      album.artist = artistId;
-      targetArtistId = String(artistId);
-    }
-
-    if (title) album.title = title;
-    if (description !== undefined) album.description = description;
-    if (coverUrl !== undefined) album.coverUrl = coverUrl;
-    if (releaseYear !== undefined) album.releaseYear = Number(releaseYear) || album.releaseYear;
-    if (themeGradient !== undefined) album.themeGradient = String(themeGradient || '');
-    if (Array.isArray(songIds)) {
-      if (songIds.length > 0) {
+      const sanitizedSongIds = songIds;
+      if (sanitizedSongIds.length > 0) {
         const songsCount = await Song.countDocuments({
-          _id: { $in: songIds },
+          _id: { $in: sanitizedSongIds },
           artist: targetArtistId,
         });
-        if (songsCount !== songIds.length) {
+        if (songsCount !== sanitizedSongIds.length) {
           return res.status(400).json({ error: 'Solo puedes agregar canciones del artista seleccionado' });
         }
       }
-      album.songs = songIds;
+
+      const album = new Album({
+        title,
+        description: description || '',
+        coverUrl: req.file?.path || coverUrl || '',
+        releaseYear: Number(releaseYear) || new Date().getFullYear(),
+        themeGradient: String(themeGradient || ''),
+        artist: targetArtistId,
+        songs: sanitizedSongIds,
+      });
+
+      await album.save();
+      await album.populate('artist', 'username profilePic role');
+
+      return res.status(201).json({ album });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al crear álbum' });
+    }
+  });
+});
+
+// UPDATE album
+app.put('/albums/:albumId', (req, res) => {
+  upload.single('cover')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(500).json({ error: `Error al subir portada: ${uploadErr.message || 'fallo de Cloudinary'}` });
     }
 
-    await album.save();
-    await album.populate('artist', 'username profilePic role');
-    await album.populate({
-      path: 'songs',
-      select: 'title artist coverUrl audioUrl collaborators',
-      populate: [
-        { path: 'artist', select: 'username _id profilePic role' },
-        { path: 'collaborators.userId', select: 'username _id' },
-      ],
-    });
+    try {
+      const { albumId } = req.params;
+      const { title, description, coverUrl, releaseYear, themeGradient, artistId, userId } = req.body;
+      const songIds = parseArrayField(req.body.songIds);
 
-    return res.json({ album });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Error al actualizar álbum' });
-  }
+      if (!userId) {
+        return res.status(400).json({ error: 'userId es requerido' });
+      }
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      const album = await Album.findById(albumId);
+      if (!album) {
+        return res.status(404).json({ error: 'Álbum no encontrado' });
+      }
+
+      if (String(album.artist) !== String(userId) && user.role !== 'admin') {
+        return res.status(403).json({ error: 'No tienes permiso para editar este álbum' });
+      }
+
+      let targetArtistId = String(album.artist);
+      if (artistId !== undefined) {
+        if (user.role !== 'admin') {
+          return res.status(403).json({ error: 'Solo admins pueden cambiar el artista del álbum' });
+        }
+
+        const nextArtist = await User.findById(artistId).select('_id role');
+        if (!nextArtist) {
+          return res.status(404).json({ error: 'Artista no encontrado' });
+        }
+
+        if (nextArtist.role !== 'artist' && nextArtist.role !== 'admin') {
+          return res.status(400).json({ error: 'El usuario seleccionado no tiene rol de artista' });
+        }
+
+        album.artist = artistId;
+        targetArtistId = String(artistId);
+      }
+
+      if (title) album.title = title;
+      if (description !== undefined) album.description = description;
+      if (req.file?.path) album.coverUrl = req.file.path;
+      else if (coverUrl !== undefined) album.coverUrl = coverUrl;
+      if (releaseYear !== undefined) album.releaseYear = Number(releaseYear) || album.releaseYear;
+      if (themeGradient !== undefined) album.themeGradient = String(themeGradient || '');
+      if (songIds.length > 0 || req.body.songIds !== undefined) {
+        if (songIds.length > 0) {
+          const songsCount = await Song.countDocuments({
+            _id: { $in: songIds },
+            artist: targetArtistId,
+          });
+          if (songsCount !== songIds.length) {
+            return res.status(400).json({ error: 'Solo puedes agregar canciones del artista seleccionado' });
+          }
+        }
+        album.songs = songIds;
+      }
+
+      await album.save();
+      await album.populate('artist', 'username profilePic role');
+      await album.populate({
+        path: 'songs',
+        select: 'title artist coverUrl audioUrl collaborators',
+        populate: [
+          { path: 'artist', select: 'username _id profilePic role' },
+          { path: 'collaborators.userId', select: 'username _id' },
+        ],
+      });
+
+      return res.json({ album });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al actualizar álbum' });
+    }
+  });
 });
 
 // DELETE album

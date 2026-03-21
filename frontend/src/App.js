@@ -169,6 +169,7 @@ function App() {
   const [userPlaylists, setUserPlaylists] = useState([]);
   const [userPlaylistsLoading, setUserPlaylistsLoading] = useState(false);
   const [userPlaylistForm, setUserPlaylistForm] = useState({ id: null, name: '', description: '', coverUrl: '', isPublic: true, songIds: [] });
+  const [userPlaylistCoverFile, setUserPlaylistCoverFile] = useState(null);
   const [userPlaylistSaving, setUserPlaylistSaving] = useState(false);
   const [albums, setAlbums] = useState([]);
   const [likedSongIds, setLikedSongIds] = useState([]);
@@ -225,6 +226,7 @@ function App() {
   const [memberPasswordConfirmDrafts, setMemberPasswordConfirmDrafts] = useState({});
   const [memberActionLoading, setMemberActionLoading] = useState({});
   const [playlistForm, setPlaylistForm] = useState({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
+  const [playlistCoverFile, setPlaylistCoverFile] = useState(null);
   const [playlistSaving, setPlaylistSaving] = useState(false);
   const [albumForm, setAlbumForm] = useState({ id: null, title: '', description: '', coverUrl: '', songIds: [] });
   // eslint-disable-next-line no-unused-vars
@@ -408,9 +410,11 @@ function App() {
 
   const resetUserPlaylistForm = () => {
     setUserPlaylistForm({ id: null, name: '', description: '', coverUrl: '', isPublic: true, songIds: [] });
+    setUserPlaylistCoverFile(null);
   };
 
   const startEditUserPlaylist = (playlist) => {
+    setUserPlaylistCoverFile(null);
     setUserPlaylistForm({
       id: playlist._id,
       name: playlist.name || '',
@@ -444,17 +448,18 @@ function App() {
         : `${API_URL}/my-playlists`;
       const method = userPlaylistForm.id ? 'PUT' : 'POST';
 
+      const formData = new FormData();
+      formData.append('userId', user._id);
+      formData.append('name', userPlaylistForm.name);
+      formData.append('description', userPlaylistForm.description || '');
+      formData.append('coverUrl', userPlaylistForm.coverUrl || '');
+      formData.append('songIds', JSON.stringify(userPlaylistForm.songIds || []));
+      formData.append('isPublic', String(Boolean(userPlaylistForm.isPublic)));
+      if (userPlaylistCoverFile) formData.append('cover', userPlaylistCoverFile);
+
       const res = await fetch(endpoint, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user._id,
-          name: userPlaylistForm.name,
-          description: userPlaylistForm.description,
-          coverUrl: userPlaylistForm.coverUrl,
-          songIds: userPlaylistForm.songIds,
-          isPublic: userPlaylistForm.isPublic,
-        }),
+        body: formData,
       });
       const data = await res.json().catch(() => ({}));
 
@@ -1296,9 +1301,11 @@ function App() {
 
   const resetPlaylistForm = () => {
     setPlaylistForm({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
+    setPlaylistCoverFile(null);
   };
 
   const startEditPlaylist = (playlist) => {
+    setPlaylistCoverFile(null);
     setPlaylistForm({
       id: playlist._id,
       name: playlist.name || '',
@@ -1332,17 +1339,18 @@ function App() {
         : `${API_URL}/admin/playlists`;
       const method = playlistForm.id ? 'PUT' : 'POST';
 
+      const formData = new FormData();
+      formData.append('requesterId', user._id);
+      formData.append('name', playlistForm.name);
+      formData.append('description', playlistForm.description || '');
+      formData.append('coverUrl', playlistForm.coverUrl || '');
+      formData.append('songIds', JSON.stringify(playlistForm.songIds || []));
+      formData.append('isDefault', String(Boolean(playlistForm.isDefault)));
+      if (playlistCoverFile) formData.append('cover', playlistCoverFile);
+
       const res = await fetch(endpoint, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requesterId: user._id,
-          name: playlistForm.name,
-          description: playlistForm.description,
-          coverUrl: playlistForm.coverUrl,
-          songIds: playlistForm.songIds,
-          isDefault: playlistForm.isDefault,
-        }),
+        body: formData,
       });
       const data = await res.json().catch(() => ({}));
 
@@ -1352,9 +1360,9 @@ function App() {
       }
 
       if (playlistForm.id) {
-        setPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? data.playlist : playlist)));
+        setPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? normalizePlaylistEntity(data.playlist) : playlist)));
       } else {
-        setPlaylists((prev) => [data.playlist, ...prev]);
+        setPlaylists((prev) => [normalizePlaylistEntity(data.playlist), ...prev]);
       }
 
       resetPlaylistForm();
@@ -2713,12 +2721,18 @@ function App() {
                     placeholder="Descripción"
                     className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
                   />
-                  <input
-                    value={userPlaylistForm.coverUrl}
-                    onChange={(e) => setUserPlaylistForm((prev) => ({ ...prev, coverUrl: e.target.value }))}
-                    placeholder="URL de portada (opcional)"
-                    className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
-                  />
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Portada desde archivo</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setUserPlaylistCoverFile(e.target.files?.[0] || null)}
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 outline-none focus:border-yellow-400 text-sm"
+                    />
+                    {userPlaylistForm.coverUrl && !userPlaylistCoverFile && (
+                      <p className="text-[10px] text-gray-400">Usando portada actual guardada.</p>
+                    )}
+                  </div>
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
                     <input
                       type="checkbox"
@@ -3070,12 +3084,18 @@ function App() {
                   placeholder="Descripción"
                   className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
                 />
-                <input
-                  value={playlistForm.coverUrl}
-                  onChange={(e) => setPlaylistForm((prev) => ({ ...prev, coverUrl: e.target.value }))}
-                  placeholder="URL de portada (opcional)"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
-                />
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Portada desde archivo</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setPlaylistCoverFile(e.target.files?.[0] || null)}
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 outline-none focus:border-yellow-400 text-sm"
+                  />
+                  {playlistForm.coverUrl && !playlistCoverFile && (
+                    <p className="text-[10px] text-gray-400">Usando portada actual guardada.</p>
+                  )}
+                </div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
                   <input
                     type="checkbox"
@@ -4226,6 +4246,8 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
+  const [coverFile, setCoverFile] = useState(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState('');
   const [releaseYear, setReleaseYear] = useState(new Date().getFullYear());
   const [artistId, setArtistId] = useState(user?._id || '');
   const [selectedSongs, setSelectedSongs] = useState([]);
@@ -4246,6 +4268,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
         setTitle(albumToEdit.title || '');
         setDescription(albumToEdit.description || '');
         setCoverUrl(albumToEdit.coverUrl || '');
+        setCoverFile(null);
         setReleaseYear(Number(albumToEdit.releaseYear) || new Date().getFullYear());
         setArtistId(albumToEdit.artist?._id || user?._id || '');
         setSelectedSongs(albumToEdit.songs?.map((s) => s._id || s) || []);
@@ -4254,6 +4277,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
         setTitle('');
         setDescription('');
         setCoverUrl('');
+        setCoverFile(null);
         setReleaseYear(new Date().getFullYear());
         setArtistId(user?._id || '');
         setSelectedSongs([]);
@@ -4265,6 +4289,17 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
   useEffect(() => {
     setSelectedSongs((prev) => prev.filter((songId) => userSongs.some((song) => String(song._id) === String(songId))));
   }, [artistId, user?._id, userSongs]);
+
+  useEffect(() => {
+    if (!coverFile) {
+      setCoverPreviewUrl('');
+      return undefined;
+    }
+
+    const objectUrl = URL.createObjectURL(coverFile);
+    setCoverPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [coverFile]);
 
   if (!isOpen) return null;
 
@@ -4284,19 +4319,21 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
     try {
       const endpoint = isEditing ? `${API_URL}/albums/${albumToEdit._id}` : `${API_URL}/albums`;
       const method = isEditing ? 'PUT' : 'POST';
+
+      const formData = new FormData();
+      formData.append('userId', user._id);
+      formData.append('artistId', artistId || user._id);
+      formData.append('title', title.trim());
+      formData.append('description', description.trim());
+      formData.append('coverUrl', coverUrl.trim());
+      formData.append('releaseYear', String(releaseYear));
+      formData.append('themeGradient', previewGradient);
+      formData.append('songIds', JSON.stringify(selectedSongs || []));
+      if (coverFile) formData.append('cover', coverFile);
+
       const res = await fetch(endpoint, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user._id,
-          artistId,
-          title: title.trim(),
-          description: description.trim(),
-          coverUrl: coverUrl.trim(),
-          releaseYear,
-          themeGradient: previewGradient,
-          songIds: selectedSongs,
-        }),
+        body: formData,
       });
 
       const data = await res.json().catch(() => ({}));
@@ -4329,7 +4366,9 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* Preview */}
           <div className={`rounded-3xl overflow-hidden aspect-square bg-gradient-to-br ${previewGradient} flex items-center justify-center shadow-lg`}>
-            {coverUrl ? (
+            {coverPreviewUrl ? (
+              <img src={coverPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+            ) : coverUrl ? (
               <img src={coverUrl} alt="Preview" className="w-full h-full object-cover" />
             ) : (
               <Disc size={64} className="text-white/40" />
@@ -4364,12 +4403,12 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
               className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20"
             />
             <input
-              type="url"
-              placeholder="URL PORTADA (OPCIONAL)"
-              value={coverUrl}
-              onChange={(e) => setCoverUrl(e.target.value)}
+              type="file"
+              accept="image/*"
+              onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
               className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
             />
+            {coverUrl && !coverFile && <p className="text-[10px] text-gray-400">Usando portada actual guardada.</p>}
             <input
               type="number"
               min="1900"
