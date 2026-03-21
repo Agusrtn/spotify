@@ -72,6 +72,62 @@ const getAlbumThemeGradient = (album) => {
   return getAlbumGradient(album?._id || 'a');
 };
 
+const normalizeMediaUrl = (rawUrl = '') => {
+  const value = String(rawUrl || '').trim();
+  if (!value) return '';
+  if (value.startsWith('data:')) return value;
+  if (value.startsWith('//')) return `https:${value}`;
+  if (/^http:\/\//i.test(value)) return value.replace(/^http:\/\//i, 'https://');
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith('/')) return `${API_URL}${value}`;
+  return `${API_URL}/${value.replace(/^\/+/, '')}`;
+};
+
+const normalizeArtistEntity = (artist) => {
+  if (!artist) return artist;
+  return {
+    ...artist,
+    profilePic: normalizeMediaUrl(artist.profilePic),
+  };
+};
+
+const normalizeSongEntity = (song) => {
+  if (!song) return song;
+  return {
+    ...song,
+    coverUrl: normalizeMediaUrl(song.coverUrl),
+    artist: normalizeArtistEntity(song.artist),
+    collaborators: Array.isArray(song.collaborators)
+      ? song.collaborators.map((collaborator) => ({
+        ...collaborator,
+        userId: collaborator?.userId
+          ? normalizeArtistEntity(collaborator.userId)
+          : collaborator?.userId,
+      }))
+      : song.collaborators,
+  };
+};
+
+const normalizePlaylistEntity = (playlist) => {
+  if (!playlist) return playlist;
+  return {
+    ...playlist,
+    coverUrl: normalizeMediaUrl(playlist.coverUrl),
+    creator: normalizeArtistEntity(playlist.creator),
+    songs: Array.isArray(playlist.songs) ? playlist.songs.map(normalizeSongEntity) : playlist.songs,
+  };
+};
+
+const normalizeAlbumEntity = (album) => {
+  if (!album) return album;
+  return {
+    ...album,
+    coverUrl: normalizeMediaUrl(album.coverUrl),
+    artist: normalizeArtistEntity(album.artist),
+    songs: Array.isArray(album.songs) ? album.songs.map(normalizeSongEntity) : album.songs,
+  };
+};
+
 const AUTH_USER_STORAGE_KEY = 'rtnmusic.auth.user';
 const AUTH_TOKEN_STORAGE_KEY = 'rtnmusic.auth.token';
 
@@ -294,7 +350,8 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/all-songs`);
       if (res.ok) {
-        const data = await res.json();
+        const dataRaw = await res.json();
+        const data = Array.isArray(dataRaw) ? dataRaw.map(normalizeSongEntity) : [];
         setAllSongs((prev) => {
           if (songsInitializedRef.current) {
             const prevIds = new Set(prev.map((song) => String(song._id)));
@@ -321,7 +378,8 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/playlists`);
       if (res.ok) {
-        const data = await res.json();
+        const dataRaw = await res.json();
+        const data = Array.isArray(dataRaw) ? dataRaw.map(normalizePlaylistEntity) : [];
         setPlaylists(data);
       }
     } catch (err) {
@@ -339,7 +397,7 @@ function App() {
         showToast(data.error || 'No se pudieron cargar tus playlists', 'error');
         return;
       }
-      setUserPlaylists(data);
+      setUserPlaylists(Array.isArray(data) ? data.map(normalizePlaylistEntity) : []);
     } catch (err) {
       console.error('Error fetching user playlists:', err);
       showToast('Error al cargar playlists personales', 'error');
@@ -406,9 +464,9 @@ function App() {
       }
 
       if (userPlaylistForm.id) {
-        setUserPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? data.playlist : playlist)));
+        setUserPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? normalizePlaylistEntity(data.playlist) : playlist)));
       } else {
-        setUserPlaylists((prev) => [data.playlist, ...prev]);
+        setUserPlaylists((prev) => [normalizePlaylistEntity(data.playlist), ...prev]);
       }
 
       resetUserPlaylistForm();
@@ -465,7 +523,7 @@ function App() {
         return;
       }
 
-      setUserPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? data.playlist : playlist)));
+      setUserPlaylists((prev) => prev.map((playlist) => (playlist._id === data.playlist._id ? normalizePlaylistEntity(data.playlist) : playlist)));
       showToast('Canción añadida a playlist', 'success');
       setSongToAddPlaylist(null);
     } catch (err) {
@@ -478,7 +536,8 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/albums`);
       if (res.ok) {
-        const data = await res.json();
+        const dataRaw = await res.json();
+        const data = Array.isArray(dataRaw) ? dataRaw.map(normalizeAlbumEntity) : [];
         setAlbums((prev) => {
           if (albumsInitializedRef.current) {
             const prevIds = new Set(prev.map((album) => String(album._id)));
@@ -512,8 +571,19 @@ function App() {
       setLikedSongIds(Array.isArray(data.likedSongIds) ? data.likedSongIds : []);
       setLikedAlbumIds(Array.isArray(data.likedAlbumIds) ? data.likedAlbumIds : []);
       setLikedPlaylistIds(Array.isArray(data.likedPlaylistIds) ? data.likedPlaylistIds : []);
-      setFavoriteLibrary(data.favorites || { songs: [], albums: [], playlists: [] });
-      setContinueListening(Array.isArray(data.continueListening) ? data.continueListening : []);
+      setFavoriteLibrary({
+        songs: Array.isArray(data.favorites?.songs) ? data.favorites.songs.map(normalizeSongEntity) : [],
+        albums: Array.isArray(data.favorites?.albums) ? data.favorites.albums.map(normalizeAlbumEntity) : [],
+        playlists: Array.isArray(data.favorites?.playlists) ? data.favorites.playlists.map(normalizePlaylistEntity) : [],
+      });
+      setContinueListening(
+        Array.isArray(data.continueListening)
+          ? data.continueListening.map((entry) => ({
+            ...entry,
+            song: normalizeSongEntity(entry.song),
+          }))
+          : []
+      );
     } catch (err) {
       console.error('Error fetching user library:', err);
     }
@@ -529,10 +599,10 @@ function App() {
       if (!res.ok) return;
 
       setDiscoveryFeed({
-        forYouSongs: Array.isArray(data.forYouSongs) ? data.forYouSongs : [],
-        trendingSongs: Array.isArray(data.trendingSongs) ? data.trendingSongs : [],
-        freshAlbums: Array.isArray(data.freshAlbums) ? data.freshAlbums : [],
-        playlists: Array.isArray(data.playlists) ? data.playlists : [],
+        forYouSongs: Array.isArray(data.forYouSongs) ? data.forYouSongs.map(normalizeSongEntity) : [],
+        trendingSongs: Array.isArray(data.trendingSongs) ? data.trendingSongs.map(normalizeSongEntity) : [],
+        freshAlbums: Array.isArray(data.freshAlbums) ? data.freshAlbums.map(normalizeAlbumEntity) : [],
+        playlists: Array.isArray(data.playlists) ? data.playlists.map(normalizePlaylistEntity) : [],
       });
     } catch (err) {
       console.error('Error fetching discovery feed:', err);
@@ -855,6 +925,20 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleResourceError = (event) => {
+      const target = event.target;
+      if (target && target.tagName === 'IMG') {
+        target.style.display = 'none';
+      }
+    };
+
+    window.addEventListener('error', handleResourceError, true);
+    return () => window.removeEventListener('error', handleResourceError, true);
+  }, []);
+
+  useEffect(() => {
     setFeaturedCarouselIndex((prev) => Math.min(prev, maxFeaturedIndex));
   }, [maxFeaturedIndex]);
 
@@ -982,8 +1066,8 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/songs?artist=${artistId}`);
       if (res.ok) {
-        const data = await res.json();
-        setMySongs(data);
+        const dataRaw = await res.json();
+        setMySongs(Array.isArray(dataRaw) ? dataRaw.map(normalizeSongEntity) : []);
       }
     } catch (err) {
       console.error('Error fetching songs:', err);
@@ -1138,7 +1222,12 @@ function App() {
       const res = await fetch(`${API_URL}/artists/${artistId}`);
       const data = await res.json();
       if (!res.ok) return alert(data.error || 'No se pudo abrir el perfil del artista');
-      setArtistProfile(data);
+      setArtistProfile({
+        ...data,
+        artist: normalizeArtistEntity(data.artist),
+        songs: Array.isArray(data.songs) ? data.songs.map(normalizeSongEntity) : [],
+        albums: Array.isArray(data.albums) ? data.albums.map(normalizeAlbumEntity) : [],
+      });
       setActiveArtistTab('info');
       setView('artist');
     } catch (err) {
@@ -1157,13 +1246,14 @@ function App() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return alert(data.error || 'No se pudo guardar la cancion');
 
-      setSelectedSong(data.song);
-      setCurrentSong((prev) => (prev && prev._id === songId ? data.song : prev));
-      setAllSongs((prev) => prev.map((song) => (song._id === songId ? data.song : song)));
-      setMySongs((prev) => prev.map((song) => (song._id === songId ? data.song : song)));
+      const normalizedSong = normalizeSongEntity(data.song);
+      setSelectedSong(normalizedSong);
+      setCurrentSong((prev) => (prev && prev._id === songId ? normalizedSong : prev));
+      setAllSongs((prev) => prev.map((song) => (song._id === songId ? normalizedSong : song)));
+      setMySongs((prev) => prev.map((song) => (song._id === songId ? normalizedSong : song)));
       setPlaylists((prev) => prev.map((playlist) => ({
         ...playlist,
-        songs: playlist.songs?.map((song) => (song._id === songId ? data.song : song)),
+        songs: playlist.songs?.map((song) => (song._id === songId ? normalizedSong : song)),
       })));
       if (view === 'artist' && artistProfile?.artist?._id) await openArtistProfile(artistProfile.artist._id);
       alert('Cambios guardados');
@@ -1428,7 +1518,7 @@ function App() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return alert(data.error || 'No se pudo actualizar tu perfil');
 
-      setUser(data.user);
+      setUser(normalizeArtistEntity(data.user));
       setSettingsPic(null);
       alert('Perfil actualizado');
     } catch (err) {
@@ -1448,7 +1538,7 @@ function App() {
         if (!silent) alert(data.error || 'No se pudo refrescar el perfil');
         return;
       }
-      setUser(data.user);
+      setUser(normalizeArtistEntity(data.user));
     } catch (err) {
       console.error(err);
       if (!silent) alert('Error al refrescar perfil');
@@ -1488,7 +1578,7 @@ function App() {
         alert(data.error || 'No se pudo sincronizar Instagram');
         return;
       }
-      setUser(data.user);
+      setUser(normalizeArtistEntity(data.user));
       showToast('Instagram sincronizado', 'success');
     } catch (err) {
       console.error(err);
@@ -1779,7 +1869,7 @@ function App() {
     return (
       <Login
         onLogin={(userData, token) => {
-          setUser(userData);
+            setUser(normalizeArtistEntity(userData));
           setAuthToken(token || '');
         }}
       />
@@ -3364,9 +3454,10 @@ function App() {
         fetchAllSongs={fetchAllSongs}
         fetchPlaylists={fetchPlaylists}
         onSongCreated={(song) => {
-          setAllSongs((prev) => [song, ...prev.filter((item) => item._id !== song._id)]);
-          if (String(song.artist?._id) === String(user._id)) {
-            setMySongs((prev) => [song, ...prev.filter((item) => item._id !== song._id)]);
+          const normalizedSong = normalizeSongEntity(song);
+          setAllSongs((prev) => [normalizedSong, ...prev.filter((item) => item._id !== normalizedSong._id)]);
+          if (String(normalizedSong.artist?._id) === String(user._id)) {
+            setMySongs((prev) => [normalizedSong, ...prev.filter((item) => item._id !== normalizedSong._id)]);
           }
         }}
       />
@@ -3380,8 +3471,9 @@ function App() {
         fetchAlbums={fetchAlbums}
         albumToEdit={albumToEdit}
         onAlbumUpdated={(updated) => {
-          setAlbums((prev) => prev.map((a) => a._id === updated._id ? updated : a));
-          setSelectedAlbum(updated);
+          const normalizedAlbum = normalizeAlbumEntity(updated);
+          setAlbums((prev) => prev.map((a) => a._id === normalizedAlbum._id ? normalizedAlbum : a));
+          setSelectedAlbum(normalizedAlbum);
         }}
       />
 
