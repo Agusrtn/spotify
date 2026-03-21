@@ -4185,6 +4185,9 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
                   )}
                 </span>
               ))}
+              <span className="ml-2 text-yellow-300/90 text-xs font-black uppercase tracking-widest">
+                • {formatPlayCount(getSongPlayCount(song))} reproducciones
+              </span>
             </div>
           </div>
 
