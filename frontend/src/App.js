@@ -52,6 +52,56 @@ const getRandomAlbumGradient = () => {
   return ALL_ALBUM_GRADIENTS[Math.floor(Math.random() * ALL_ALBUM_GRADIENTS.length)];
 };
 
+const SONG_GENRE_OPTIONS = [
+  { value: 'urbano', label: 'Urbano' },
+  { value: 'reggaeton', label: 'Reggaeton' },
+  { value: 'trap', label: 'Trap' },
+  { value: 'drill', label: 'Drill' },
+  { value: 'dembow', label: 'Dembow' },
+  { value: 'pop', label: 'Pop' },
+  { value: 'rnb', label: 'R&B' },
+  { value: 'hiphop', label: 'Hip Hop' },
+  { value: 'rock', label: 'Rock' },
+  { value: 'electro', label: 'Electro' },
+  { value: 'house', label: 'House' },
+  { value: 'afrobeats', label: 'Afrobeats' },
+  { value: 'bachata', label: 'Bachata' },
+  { value: 'salsa', label: 'Salsa' },
+  { value: 'merengue', label: 'Merengue' },
+  { value: 'corrido', label: 'Corrido' },
+  { value: 'balada', label: 'Balada' },
+  { value: 'lofi', label: 'Lofi' },
+  { value: 'experimental', label: 'Experimental' },
+  { value: 'otro', label: 'Otro' },
+];
+
+const inferGenreFromSongText = ({ title = '', description = '', lyrics = '' } = {}) => {
+  const source = `${title} ${description} ${lyrics}`.toLowerCase();
+  const checks = [
+    ['reggaeton', /reggaeton|regueton|perreo|bellaqueo/],
+    ['dembow', /dembow/],
+    ['trap', /trap|808|autotune/],
+    ['drill', /drill/],
+    ['urbano', /urban|calle|flow/],
+    ['afrobeats', /afrobeat|afrobeats/],
+    ['bachata', /bachata/],
+    ['salsa', /salsa/],
+    ['merengue', /merengue/],
+    ['corrido', /corrido|corridos/],
+    ['rnb', /r&b|rnb/],
+    ['hiphop', /hip hop|hiphop|rap/],
+    ['house', /house/],
+    ['electro', /electro|electronica|edm/],
+    ['rock', /rock|guitarra/],
+    ['balada', /balada|romantic/],
+    ['lofi', /lofi|chill/],
+    ['pop', /pop/],
+  ];
+
+  const match = checks.find((item) => item[1].test(source));
+  return match ? match[0] : 'otro';
+};
+
 const INSTAGRAM_POST_REGEX = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[A-Za-z0-9_-]+/i;
 const LYRIC_TIMESTAMP_REGEX = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
 
@@ -119,6 +169,20 @@ const convertPlainLyricsToLrc = (rawLyrics = '', lineStepSeconds = 4) => {
   return rows
     .map((row, index) => `[${formatLrcTimestamp(index * lineStepSeconds)}]${row}`)
     .join('\n');
+};
+
+const formatPlayCount = (value = 0) => {
+  const count = Math.max(0, Number(value) || 0);
+  if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+  return String(Math.floor(count));
+};
+
+const getSongPlayCount = (song) => Math.max(0, Number(song?.playCount || 0));
+
+const getAlbumPlayCount = (album) => {
+  const songs = Array.isArray(album?.songs) ? album.songs : [];
+  return songs.reduce((sum, song) => sum + getSongPlayCount(song), 0);
 };
 
 const normalizeInstagramPostUrl = (url = '') => {
@@ -224,6 +288,7 @@ function App() {
   const [searchResults, setSearchResults] = useState({ artists: [], songs: [], albums: [] });
   const [searchType, setSearchType] = useState('all');
   const [searchSort, setSearchSort] = useState('recent');
+  const [searchGenre, setSearchGenre] = useState('all');
   const [searchLoading, setSearchLoading] = useState(false);
   const [mySongs, setMySongs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1359,6 +1424,7 @@ function App() {
         query: query,
         type: searchType,
         sort: searchSort,
+        genre: searchGenre,
       });
       const res = await fetch(`${API_URL}/search-all?${params.toString()}`);
       const data = await res.json();
@@ -1375,7 +1441,7 @@ function App() {
     if (searchQuery.trim().length < 2) return;
     handleSearch(searchQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchType, searchSort]);
+  }, [searchType, searchSort, searchGenre]);
 
   const resetPlaylistForm = () => {
     setPlaylistForm({ id: null, name: '', description: '', coverUrl: '', songIds: [], isDefault: true });
@@ -2460,6 +2526,7 @@ function App() {
                       <p className="font-black text-lg md:text-2xl leading-tight mb-2 text-white">{album.title}</p>
                       <p className="text-white/70 text-sm">{album.artist?.username || 'Artista'}</p>
                       <p className="text-white/50 text-xs mt-2">{album.songs?.length || 0} canciones • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
+                        <p className="text-yellow-300/90 text-[10px] mt-1 font-bold uppercase tracking-widest">{formatPlayCount(getAlbumPlayCount(album))} reproducciones</p>
                     </div>
                   </button>
                   ))}
@@ -2611,6 +2678,16 @@ function App() {
               <option value="albums">Solo álbumes</option>
             </select>
             <select
+              value={searchGenre}
+              onChange={(e) => setSearchGenre(e.target.value)}
+              className="bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold uppercase"
+            >
+              <option value="all">Todos los géneros</option>
+              {SONG_GENRE_OPTIONS.map((genreOption) => (
+                <option key={genreOption.value} value={genreOption.value}>{genreOption.label}</option>
+              ))}
+            </select>
+            <select
               value={searchSort}
               onChange={(e) => setSearchSort(e.target.value)}
               className="bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold uppercase"
@@ -2701,6 +2778,7 @@ function App() {
                       <div className="p-4 bg-black/40 backdrop-blur-sm">
                         <p className="font-black text-lg leading-tight mb-1 text-white truncate">{album.title}</p>
                         <p className="text-white/70 text-xs">{album.artist?.username || 'Artista'} • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
+                        <p className="text-yellow-300/90 text-[10px] mt-1 font-bold uppercase tracking-widest">{formatPlayCount(getAlbumPlayCount(album))} reproducciones</p>
                       </div>
                     </button>
                   ))
@@ -2843,6 +2921,7 @@ function App() {
                       <div className="p-4 bg-black/40 backdrop-blur-sm">
                         <p className="font-black text-lg leading-tight mb-1 text-white">{album.title}</p>
                         <p className="text-white/50 text-xs">{album.songs?.length || 0} canciones</p>
+                        <p className="text-yellow-300/90 text-[10px] mt-1 font-bold uppercase tracking-widest">{formatPlayCount(getAlbumPlayCount(album))} reproducciones</p>
                       </div>
                     </button>
                   ))
@@ -3165,6 +3244,7 @@ function App() {
                       <div className="p-4 bg-black/40 backdrop-blur-sm">
                         <p className="font-black text-lg leading-tight mb-1 text-white">{album.title}</p>
                         <p className="text-white/50 text-xs">{album.songs?.length || 0} canciones</p>
+                        <p className="text-yellow-300/90 text-[10px] mt-1 font-bold uppercase tracking-widest">{formatPlayCount(getAlbumPlayCount(album))} reproducciones</p>
                       </div>
                     </button>
                   ))
@@ -3802,6 +3882,11 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick,
 
     <div className="min-w-0 flex-1 overflow-hidden">
       <h4 className="font-black uppercase italic text-sm truncate">{song.title}</h4>
+      <div className="mt-1 mb-1">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-400/15 border border-yellow-400/30 text-[9px] uppercase tracking-widest font-bold text-yellow-300">
+          {SONG_GENRE_OPTIONS.find((item) => item.value === String(song.genre || '').toLowerCase())?.label || 'Otro'}
+        </span>
+      </div>
       <div className="flex flex-wrap items-center gap-x-0 mt-0.5">
         <button
           type="button"
@@ -3827,6 +3912,7 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick,
           </span>
         ))}
       </div>
+      <p className="text-[10px] text-white/60 font-bold tracking-widest uppercase mt-1">{formatPlayCount(getSongPlayCount(song))} reproducciones</p>
     </div>
 
     <div className="flex items-center gap-2">
@@ -3924,6 +4010,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [lyrics, setLyrics] = useState('');
+  const [genre, setGenre] = useState('otro');
   const [artistId, setArtistId] = useState('');
   const [collaborators, setCollaborators] = useState([]);
   const [panelGradient, setPanelGradient] = useState(getRandomAlbumGradient());
@@ -3936,6 +4023,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
     setTitle(song.title || '');
     setDescription(song.description || '');
     setLyrics(song.lyrics || '');
+    setGenre(song.genre || 'otro');
     setArtistId(song.artist?._id || '');
     setCollaborators((song.collaborators || []).map((collaborator) => ({
       name: collaborator.userId?.username || collaborator.name || '',
@@ -3993,6 +4081,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
       title,
       description,
       lyrics,
+      genre,
       ...(user?.role === 'admin' ? { artistId } : {}),
       ...(user?.role === 'admin' ? {
         collaborators: JSON.stringify(
@@ -4055,6 +4144,13 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
     } finally {
       setLrcAiLoading(false);
     }
+  };
+
+  const handleSuggestGenre = () => {
+    const suggested = inferGenreFromSongText({ title, description, lyrics });
+    setGenre(suggested);
+    const label = SONG_GENRE_OPTIONS.find((item) => item.value === suggested)?.label || 'Otro';
+    alert(`Género sugerido: ${label}`);
   };
 
   return (
@@ -4128,6 +4224,32 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2">
               <h3 className="text-3xl font-black mb-4">Letra</h3>
+              {isEditing ? (
+                <div className="mb-4 flex flex-col md:flex-row gap-2">
+                  <select
+                    value={genre}
+                    onChange={(e) => setGenre(e.target.value)}
+                    className="bg-black/40 border border-white/10 rounded-xl p-3 outline-none focus:border-yellow-400 text-sm font-bold uppercase"
+                  >
+                    {SONG_GENRE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleSuggestGenre}
+                    className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+                  >
+                    Sugerir género
+                  </button>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-yellow-400/15 border border-yellow-400/30 text-[10px] uppercase tracking-widest font-bold text-yellow-300">
+                    Género: {SONG_GENRE_OPTIONS.find((item) => item.value === String(genre || '').toLowerCase())?.label || 'Otro'}
+                  </span>
+                </div>
+              )}
               {isEditing ? (
                 <div>
                   <textarea
@@ -4440,6 +4562,7 @@ const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenAr
               {album.artist?.username || 'Artista'}
             </button>
             <p className="mt-2 text-white/70 font-semibold">{album.songs?.length || 0} canciones • {album.releaseYear || new Date(album.releaseDate).getFullYear()}</p>
+            <p className="mt-1 text-yellow-300/90 text-xs font-black uppercase tracking-widest">{formatPlayCount(getAlbumPlayCount(album))} reproducciones del álbum</p>
             <button
               type="button"
               onClick={() => onToggleLike && onToggleLike(album._id)}
@@ -4514,6 +4637,7 @@ const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenAr
                     );
                   })}
                 </div>
+                <p className="text-[10px] text-yellow-200/90 font-bold uppercase tracking-widest mt-1">{formatPlayCount(getSongPlayCount(song))} reproducciones</p>
               </div>
               <button
                 onClick={() => onPlaySong(song, index, album.songs || [])}
@@ -4805,6 +4929,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [lyrics, setLyrics] = useState('');
+  const [genre, setGenre] = useState('otro');
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -4817,6 +4942,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
     if (isOpen) {
       setArtistId(userId);
       setCollaborators([]);
+      setGenre('otro');
     }
   }, [isOpen, userId]);
 
@@ -4897,6 +5023,13 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
     }
   };
 
+  const handleSuggestGenre = () => {
+    const suggested = inferGenreFromSongText({ title, description: desc, lyrics });
+    setGenre(suggested);
+    const label = SONG_GENRE_OPTIONS.find((item) => item.value === suggested)?.label || 'Otro';
+    alert(`Género sugerido: ${label}`);
+  };
+
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!audioFile || !title || !coverFile) return alert('Nombre, Audio y Caratula son obligatorios');
@@ -4907,6 +5040,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
     formData.append('title', title);
     formData.append('description', desc);
     formData.append('lyrics', lyrics);
+    formData.append('genre', genre);
     formData.append('artistId', artistId || userId);
     formData.append('uploaderId', userId);
     formData.append('collaborators', JSON.stringify(
@@ -4932,6 +5066,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
         setTitle('');
         setDesc('');
         setLyrics('');
+        setGenre('otro');
         setAudioFile(null);
         setCoverFile(null);
         setArtistId(userId);
@@ -4977,8 +5112,26 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{coverFile ? `OK ${coverFile.name}` : 'SELECCIONAR CARATULA'}</p>
           </div>
 
-          <input type="text" placeholder="NOMBRE DEL TRACK" required className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold" onChange={(e) => setTitle(e.target.value)} />
-          <textarea placeholder="DESCRIPCION" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20" onChange={(e) => setDesc(e.target.value)} />
+          <input value={title} type="text" placeholder="NOMBRE DEL TRACK" required className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold" onChange={(e) => setTitle(e.target.value)} />
+          <textarea value={desc} placeholder="DESCRIPCION" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20" onChange={(e) => setDesc(e.target.value)} />
+          <div className="flex flex-col md:flex-row gap-2">
+            <select
+              value={genre}
+              onChange={(e) => setGenre(e.target.value)}
+              className="w-full md:w-auto bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold uppercase"
+            >
+              {SONG_GENRE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleSuggestGenre}
+              className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+            >
+              Sugerir género
+            </button>
+          </div>
           <div>
             <textarea value={lyrics} placeholder="LETRA (OPCIONAL) - TEXTO NORMAL O LRC [mm:ss.xx]" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-32" onChange={(e) => setLyrics(e.target.value)} />
             <button

@@ -564,7 +564,7 @@ app.get('/share/:type/:id', async (req, res) => {
     if (type === 'album') {
       const album = await Album.findById(id)
         .populate('artist', 'username _id')
-        .populate('songs', 'title coverUrl');
+        .populate('songs', 'title coverUrl playCount');
       if (!album) {
         return res.status(404).send('Album no encontrado');
       }
@@ -638,7 +638,7 @@ const buildUserLibraryPayload = async (userId) => {
       .populate('artist', 'username _id profilePic bio')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators',
+        select: 'title artist coverUrl audioUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -949,6 +949,102 @@ const parseBooleanField = (value, defaultValue = false) => {
   return defaultValue;
 };
 
+const SONG_GENRES = [
+  'urbano',
+  'reggaeton',
+  'trap',
+  'drill',
+  'dembow',
+  'pop',
+  'rnb',
+  'hiphop',
+  'rock',
+  'electro',
+  'house',
+  'afrobeats',
+  'bachata',
+  'salsa',
+  'merengue',
+  'corrido',
+  'balada',
+  'lofi',
+  'experimental',
+  'otro',
+];
+
+const normalizeGenre = (raw = '') => {
+  const clean = String(raw || '').toLowerCase().trim();
+  if (!clean) return '';
+  const normalized = clean
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+
+  const aliases = {
+    urban: 'urbano',
+    urbana: 'urbano',
+    urbano: 'urbano',
+    reguetton: 'reggaeton',
+    reggaeton: 'reggaeton',
+    reggaetonero: 'reggaeton',
+    hiphop: 'hiphop',
+    hiphoplatino: 'hiphop',
+    rnb: 'rnb',
+    randb: 'rnb',
+    dembow: 'dembow',
+    electro: 'electro',
+    electronic: 'electro',
+    electronica: 'electro',
+    house: 'house',
+    afrobeat: 'afrobeats',
+    afrobeats: 'afrobeats',
+    bachata: 'bachata',
+    salsa: 'salsa',
+    merengue: 'merengue',
+    corrido: 'corrido',
+    corridos: 'corrido',
+    balada: 'balada',
+    lofi: 'lofi',
+    experimental: 'experimental',
+    pop: 'pop',
+    rock: 'rock',
+    drill: 'drill',
+    trap: 'trap',
+    otro: 'otro',
+  };
+
+  const result = aliases[normalized] || '';
+  return SONG_GENRES.includes(result) ? result : '';
+};
+
+const inferGenreFromText = ({ title = '', description = '', lyrics = '' } = {}) => {
+  const haystack = `${title} ${description} ${lyrics}`.toLowerCase();
+  const checks = [
+    { genre: 'reggaeton', regex: /reggaeton|regueton|perreo|bellaqueo/ },
+    { genre: 'dembow', regex: /dembow/ },
+    { genre: 'trap', regex: /trap|808|autotune/ },
+    { genre: 'drill', regex: /drill/ },
+    { genre: 'urbano', regex: /urban|calle|flow/ },
+    { genre: 'afrobeats', regex: /afrobeat|afrobeat|afrobeats/ },
+    { genre: 'bachata', regex: /bachata/ },
+    { genre: 'salsa', regex: /salsa/ },
+    { genre: 'merengue', regex: /merengue/ },
+    { genre: 'corrido', regex: /corrido|corridos/ },
+    { genre: 'rnb', regex: /r&b|rnb/ },
+    { genre: 'hiphop', regex: /hip hop|hiphop|rap/ },
+    { genre: 'house', regex: /house/ },
+    { genre: 'electro', regex: /electro|electronica|edm/ },
+    { genre: 'rock', regex: /rock|guitarra/ },
+    { genre: 'balada', regex: /balada|romantic/ },
+    { genre: 'lofi', regex: /lofi|chill/ },
+    { genre: 'pop', regex: /pop/ },
+  ];
+
+  const found = checks.find((item) => item.regex.test(haystack));
+  return found?.genre || 'otro';
+};
+
 // --- RUTAS ---
 
 // RUTA DE SUBIDA (DROP NEW HIT)
@@ -963,7 +1059,7 @@ app.post('/upload-song', (req, res) => {
     }
 
     try {
-      const { title, description, lyrics, artistId, uploaderId, collaborators: collaboratorsRaw } = req.body;
+      const { title, description, lyrics, genre, artistId, uploaderId, collaborators: collaboratorsRaw } = req.body;
 
       let parsedCollaborators = [];
       if (collaboratorsRaw) {
@@ -1009,6 +1105,7 @@ app.post('/upload-song', (req, res) => {
         title,
         description: description || '',
         lyrics: lyrics || '',
+        genre: normalizeGenre(genre) || inferGenreFromText({ title, description, lyrics }),
         artist: artistId,
         audioUrl: req.files.audio[0].path,
         coverUrl: req.files.cover ? req.files.cover[0].path : '',
@@ -1628,7 +1725,7 @@ app.delete('/admin/playlists/:playlistId', async (req, res) => {
 app.put('/songs/:songId', async (req, res) => {
   try {
     const { songId } = req.params;
-    const { title, description, lyrics, artistId, userId, collaborators: collaboratorsRaw } = req.body;
+    const { title, description, lyrics, genre, artistId, userId, collaborators: collaboratorsRaw } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'Falta userId para autorizar edición' });
@@ -1669,6 +1766,9 @@ app.put('/songs/:songId', async (req, res) => {
     song.title = (title || '').trim() || song.title;
     song.description = description || '';
     song.lyrics = lyrics || '';
+    if (genre !== undefined) {
+      song.genre = normalizeGenre(genre) || inferGenreFromText({ title: song.title, description: song.description, lyrics: song.lyrics });
+    }
     if (collaboratorsRaw !== undefined) {
       try {
         const parsed = JSON.parse(collaboratorsRaw);
@@ -1726,6 +1826,7 @@ app.get('/search-all', async (req, res) => {
     const query = (req.query.query || '').trim();
     const type = (req.query.type || 'all').trim();
     const sort = (req.query.sort || 'recent').trim();
+    const genre = normalizeGenre(req.query.genre || '');
     if (!query) {
       return res.json({ artists: [], songs: [], albums: [] });
     }
@@ -1741,7 +1842,16 @@ app.get('/search-all', async (req, res) => {
 
     const songs = type === 'all' || type === 'songs'
       ? await Song.find({
-        title: { $regex: query, $options: 'i' },
+        $and: [
+          {
+            $or: [
+              { title: { $regex: query, $options: 'i' } },
+              { description: { $regex: query, $options: 'i' } },
+              { lyrics: { $regex: query, $options: 'i' } },
+            ],
+          },
+          ...(genre ? [{ genre }] : []),
+        ],
       })
         .populate('artist', 'username _id profilePic bio')
         .populate('collaborators.userId', 'username _id')
@@ -1756,7 +1866,7 @@ app.get('/search-all', async (req, res) => {
         .populate('artist', 'username _id profilePic bio')
         .populate({
           path: 'songs',
-          select: 'title artist coverUrl audioUrl collaborators',
+          select: 'title artist coverUrl audioUrl collaborators playCount genre',
           populate: [
             { path: 'artist', select: 'username _id profilePic role' },
             { path: 'collaborators.userId', select: 'username _id' },
@@ -1856,7 +1966,7 @@ app.get('/discovery-feed', async (req, res) => {
       .populate('artist', 'username _id profilePic bio')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators',
+        select: 'title artist coverUrl audioUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -1911,7 +2021,7 @@ app.get('/artists/:artistId', async (req, res) => {
       .populate('artist', 'username _id profilePic bio')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators',
+        select: 'title artist coverUrl audioUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -2653,7 +2763,7 @@ app.get('/albums', async (req, res) => {
       .populate('artist', 'username profilePic role')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators',
+        select: 'title artist coverUrl audioUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -2825,7 +2935,7 @@ app.put('/albums/:albumId', (req, res) => {
       await album.populate('artist', 'username profilePic role');
       await album.populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators',
+        select: 'title artist coverUrl audioUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
