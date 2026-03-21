@@ -8,6 +8,7 @@ const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const path = require('path');
+const dns = require('dns').promises;
 const OpenAI = require('openai');
 const { toFile } = require('openai/uploads');
 
@@ -787,6 +788,58 @@ app.get('/health/ai-config', (req, res) => {
       missing: configured ? [] : ['OPENAI_API_KEY'],
     },
   });
+});
+
+app.get('/health/openai-network', async (req, res) => {
+  const report = {
+    ok: false,
+    host: 'api.openai.com',
+    hasApiKey: Boolean(OPENAI_API_KEY),
+    dns: { ok: false, addresses: [], error: '' },
+    https: { ok: false, status: null, error: '' },
+  };
+
+  try {
+    const records = await dns.lookup('api.openai.com', { all: true });
+    report.dns.ok = Array.isArray(records) && records.length > 0;
+    report.dns.addresses = (records || []).map((entry) => `${entry.address}/${entry.family}`);
+  } catch (error) {
+    report.dns.error = String(error?.message || 'DNS lookup failed');
+  }
+
+  if (!OPENAI_API_KEY) {
+    return res.status(500).json({
+      ...report,
+      error: 'OPENAI_API_KEY no configurada',
+    });
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch('https://api.openai.com/v1/models', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    report.https.status = response.status;
+    report.https.ok = response.ok || response.status === 401 || response.status === 403;
+
+    if (!report.https.ok) {
+      const bodyText = await response.text().catch(() => '');
+      report.https.error = bodyText ? `HTTP ${response.status}: ${bodyText.slice(0, 300)}` : `HTTP ${response.status}`;
+    }
+  } catch (error) {
+    report.https.error = String(error?.message || 'HTTPS request failed');
+  }
+
+  report.ok = report.dns.ok && report.https.ok;
+  return res.status(report.ok ? 200 : 500).json(report);
 });
 
 // Configuración de Almacenamiento
