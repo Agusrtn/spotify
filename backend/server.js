@@ -178,6 +178,25 @@ const safeJsonParse = (raw = '') => {
   }
 };
 
+const getAiProviderErrorMessage = (error) => {
+  const raw = String(error?.error?.message || error?.message || '').trim();
+  if (!raw) return 'Error de IA sin detalle disponible';
+
+  if (/model.*(not found|does not exist|do not have access)/i.test(raw)) {
+    return 'Tu cuenta OpenAI no tiene acceso al modelo configurado para alineación perfecta. Usa mode=balanced o habilita acceso al modelo.';
+  }
+
+  if (/quota|insufficient|billing|rate limit|429/i.test(raw)) {
+    return 'OpenAI rechazó la solicitud por cuota/facturación/límite. Revisa tu plan y uso.';
+  }
+
+  if (/audio|file|size|too large|413/i.test(raw)) {
+    return 'El audio es demasiado pesado para procesar con IA. Prueba con un archivo más liviano.';
+  }
+
+  return raw;
+};
+
 const refineRowsWithAi = async ({ lines, baseRows, wordTimestamps, durationSec, mode = 'balanced' }) => {
   if (!openaiClient) return null;
 
@@ -187,8 +206,7 @@ const refineRowsWithAi = async ({ lines, baseRows, wordTimestamps, durationSec, 
 
   const hints = baseRows.map((row, idx) => ({ index: idx, line: row.line, approxStartSec: Number(row.time.toFixed(2)) }));
 
-  const response = await openaiClient.chat.completions.create({
-    model: mode === 'perfect' ? 'gpt-4.1' : 'gpt-4.1-mini',
+  const requestPayload = {
     temperature: 0,
     response_format: { type: 'json_object' },
     messages: [
@@ -206,7 +224,23 @@ const refineRowsWithAi = async ({ lines, baseRows, wordTimestamps, durationSec, 
         }),
       },
     ],
-  });
+  };
+
+  let response;
+  try {
+    response = await openaiClient.chat.completions.create({
+      model: mode === 'perfect' ? 'gpt-4.1' : 'gpt-4.1-mini',
+      ...requestPayload,
+    });
+  } catch (primaryError) {
+    const canFallbackModel = mode === 'perfect' && /model.*(not found|does not exist|do not have access)/i.test(String(primaryError?.message || ''));
+    if (!canFallbackModel) throw primaryError;
+
+    response = await openaiClient.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      ...requestPayload,
+    });
+  }
 
   const raw = response?.choices?.[0]?.message?.content || '';
   const parsed = safeJsonParse(raw);
@@ -791,8 +825,9 @@ app.post('/ai/lyrics/to-lrc', (req, res) => {
         },
       });
     } catch (error) {
-      console.error('AI LRC generation error:', error.message);
-      return res.status(500).json({ error: 'Error al generar LRC con IA' });
+      const message = getAiProviderErrorMessage(error);
+      console.error('AI LRC generation error:', message);
+      return res.status(500).json({ error: message });
     }
   });
 });
