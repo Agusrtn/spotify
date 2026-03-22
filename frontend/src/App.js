@@ -371,6 +371,8 @@ function App() {
   const [videoUploadFile, setVideoUploadFile] = useState(null);
   const [videoUploadLoading, setVideoUploadLoading] = useState(false);
   const [videoUploadAsRTN, setVideoUploadAsRTN] = useState(false);
+  const [rtnProfilePic, setRtnProfilePic] = useState('');
+  const [rtnProfilePicUploading, setRtnProfilePicUploading] = useState(false);
   const [instagramActionLoading, setInstagramActionLoading] = useState(false);
   const [instagramConfig, setInstagramConfig] = useState({ checked: false, configured: true, missing: [] });
   const [members, setMembers] = useState([]);
@@ -542,6 +544,16 @@ function App() {
       console.error('Error fetching videos:', err);
     }
     setVideosLoading(false);
+  };
+
+  const fetchRtnProfilePic = async () => {
+    try {
+      const res = await fetch(`${API_URL}/users/${RTN_MUSIC_USER_ID}/profile`);
+      if (res.ok) {
+        const data = await res.json();
+        setRtnProfilePic(data.profilePic || '');
+      }
+    } catch (_) {}
   };
 
   const fetchPlaylists = async () => {
@@ -957,6 +969,7 @@ function App() {
     fetchAlbums();
     if (user?._id) fetchUserPlaylists();
     fetchVideos();
+    fetchRtnProfilePic();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2836,8 +2849,49 @@ function App() {
           <div className="mb-12">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-yellow-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-yellow-400/20">
-                  <span className="text-black font-black text-xl">R</span>
+                <div className="relative group/avatar w-14 h-14 rounded-2xl bg-yellow-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-yellow-400/20 overflow-hidden">
+                  {rtnProfilePic ? (
+                    <img src={rtnProfilePic} alt="RTN MUSIC" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-black font-black text-xl">R</span>
+                  )}
+                  {user.role === 'admin' && (
+                    <label className="absolute inset-0 bg-black/60 opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer flex items-center justify-center" title="Cambiar foto">
+                      <Edit3 size={16} className="text-white" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={rtnProfilePicUploading}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setRtnProfilePicUploading(true);
+                          try {
+                            const fd = new FormData();
+                            fd.append('profilePic', file);
+                            const r = await fetch(`${API_URL}/users/${RTN_MUSIC_USER_ID}/profile`, { method: 'PUT', body: fd });
+                            if (r.ok) {
+                              const data = await r.json();
+                              setRtnProfilePic(data.user?.profilePic || '');
+                              showToast('Foto de perfil actualizada', 'success');
+                            } else {
+                              showToast('Error al actualizar la foto', 'error');
+                            }
+                          } catch (_) {
+                            showToast('Error de conexión', 'error');
+                          }
+                          setRtnProfilePicUploading(false);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                  {rtnProfilePicUploading && (
+                    <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+                      <div className="w-5 h-5 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
