@@ -190,6 +190,8 @@ const extractYoutubeId = (url) => {
   return match ? match[1] : null;
 };
 
+const RTN_MUSIC_USER_ID = '69b979bde67d9d8b90e63d46';
+
 const normalizeInstagramPostUrl = (url = '') => {
   const trimmed = String(url).trim();
   if (!trimmed) return '';
@@ -3065,6 +3067,88 @@ function App() {
           </div>
         </div>
       )}
+
+      {view === 'rtnmusic' && (() => {
+        const rtnVideos = videos.filter((v) => String(v.uploader?._id) === RTN_MUSIC_USER_ID);
+        return (
+          <div className="animate-in slide-in-from-bottom-4 duration-500">
+            {/* Hero banner */}
+            <div className="relative rounded-[40px] overflow-hidden border border-yellow-400/20 mb-8" style={{ background: 'linear-gradient(135deg, #1a0f00 0%, #0d0500 50%, #000 100%)' }}>
+              <div className="absolute inset-0 opacity-20" style={{ background: 'radial-gradient(ellipse at 30% 50%, #facc15 0%, transparent 70%)' }} />
+              <div className="relative p-8 md:p-12 flex flex-col md:flex-row items-center md:items-end gap-6">
+                <div className="w-24 h-24 md:w-32 md:h-32 rounded-3xl bg-yellow-400 flex items-center justify-center shadow-2xl shadow-yellow-400/30 flex-shrink-0 overflow-hidden border-2 border-yellow-400/40">
+                  <span className="text-black font-black text-4xl md:text-5xl">R</span>
+                </div>
+                <div>
+                  <p className="text-[10px] text-yellow-400 font-black uppercase tracking-[0.4em] mb-1">Canal Oficial</p>
+                  <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter">RTN MUSIC</h1>
+                  <p className="text-gray-400 text-sm mt-2">{rtnVideos.length} {rtnVideos.length === 1 ? 'video' : 'videos'} publicados</p>
+                </div>
+              </div>
+            </div>
+
+            {videosLoading ? (
+              <div className="flex justify-center py-20">
+                <div className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : rtnVideos.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 gap-4 text-gray-600">
+                <div className="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="currentColor"/></svg>
+                </div>
+                <p className="text-sm font-bold uppercase tracking-widest">No hay videos todavía</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {rtnVideos.map((vid) => {
+                  const thumb = vid.thumbnailUrl || (vid.type === 'youtube' ? `https://img.youtube.com/vi/${vid.youtubeId}/hqdefault.jpg` : '');
+                  return (
+                    <div
+                      key={vid._id}
+                      className="group relative bg-white/[0.03] border border-white/10 rounded-3xl overflow-hidden hover:border-yellow-400/40 transition-all cursor-pointer"
+                      onClick={() => { setActiveVideo(vid); fetch(`${API_URL}/videos/${vid._id}/view`, { method: 'POST' }).then(() => setVideos((prev) => prev.map((v) => v._id === vid._id ? { ...v, views: (v.views || 0) + 1 } : v))).catch(() => {}); }}
+                    >
+                      <div className={`relative bg-black/60 overflow-hidden ${vid.orientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                        {thumb ? (
+                          <img src={thumb} alt={vid.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-yellow-400/10 to-black flex items-center justify-center">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="#facc1580"/></svg>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center shadow-xl shadow-yellow-400/40">
+                            <Play size={22} fill="black" className="text-black ml-1" />
+                          </div>
+                        </div>
+                        {vid.type === 'youtube' && (
+                          <div className="absolute top-2 right-2 bg-red-600 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full">YT</div>
+                        )}
+                        {vid.orientation === 'vertical' && (
+                          <div className="absolute top-2 left-2 bg-black/60 text-gray-300 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10">Vertical</div>
+                        )}
+                      </div>
+                      <div className="p-4">
+                        <p className="font-black text-sm truncate">{vid.title}</p>
+                        {vid.description && <p className="text-gray-500 text-xs mt-0.5 truncate">{vid.description}</p>}
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 rounded-full bg-yellow-400 overflow-hidden flex-shrink-0 flex items-center justify-center text-[8px] font-black text-black">
+                              {vid.uploader?.profilePic ? <img src={vid.uploader.profilePic} alt="RTN" className="w-full h-full object-cover" /> : 'R'}
+                            </div>
+                            <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">RTN MUSIC</span>
+                          </div>
+                          <span className="text-gray-600 text-[10px] font-bold">{formatPlayCount(vid.views || 0)} views</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {view === 'perfil' && (
         <div className="animate-in fade-in duration-500">

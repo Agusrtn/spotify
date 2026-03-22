@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell, FileText, X, Film } from 'lucide-react';
+import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell, FileText, X, Film, Star } from 'lucide-react';
 import Aurora from './Aurora';
 
 const LYRIC_TS_REGEX = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
@@ -149,6 +149,12 @@ const Layout = ({
               className={`flex items-center gap-4 transition-all text-left w-full group ${view === 'perfil' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'}`}
             >
               <Library size={22} className={view === 'perfil' ? 'text-yellow-400' : 'group-hover:text-yellow-400'} /> Mi Crew
+            </button>
+            <button 
+              onClick={() => setView('rtnmusic')}
+              className={`flex items-center gap-4 transition-all text-left w-full group ${view === 'rtnmusic' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Star size={22} className={view === 'rtnmusic' ? 'text-yellow-400' : 'group-hover:text-yellow-400'} /> RTN MUSIC
             </button>
           </nav>
 
@@ -495,6 +501,10 @@ const Layout = ({
           <button onClick={() => setView('perfil')} className="flex flex-col items-center gap-0.5 py-1 px-3">
             <Library size={22} className={view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'} />
             <span className={`text-[9px] font-bold ${view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'}`}>Mi Crew</span>
+          </button>
+          <button onClick={() => setView('rtnmusic')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+            <Star size={22} className={view === 'rtnmusic' ? 'text-yellow-400' : 'text-gray-500'} />
+            <span className={`text-[9px] font-bold ${view === 'rtnmusic' ? 'text-yellow-400' : 'text-gray-500'}`}>RTN</span>
           </button>
           {user.role === 'admin' && (
             <button onClick={() => setView('admin')} className="flex flex-col items-center gap-0.5 py-1 px-3">
