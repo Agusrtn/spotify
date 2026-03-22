@@ -24,6 +24,7 @@ const User = require('./models/User');
 const Song = require('./models/Song');
 const Playlist = require('./models/Playlist');
 const Album = require('./models/Album');
+const Video = require('./models/Video');
 
 const IG_APP_ID = process.env.INSTAGRAM_APP_ID || '';
 const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || '';
@@ -847,9 +848,10 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
     const isAudio = file.mimetype.includes('audio');
+    const isVideo = file.mimetype.includes('video');
     return {
       folder: 'rtn_music',
-      resource_type: isAudio ? 'video' : 'image',
+      resource_type: (isAudio || isVideo) ? 'video' : 'image',
     };
   },
 });
@@ -3035,5 +3037,158 @@ app.put('/users/:userId/password', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al cambiar contraseña' });
+  }
+});
+
+// ===================== MEDIA / VIDEOS =====================
+
+const extractYoutubeId = (url) => {
+  const trimmed = String(url || '').trim();
+  const match = trimmed.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/))([A-Za-z0-9_-]{11})/);
+  return match ? match[1] : null;
+};
+
+// GET /videos — list all videos, newest first
+app.get('/videos', async (req, res) => {
+  try {
+    const videos = await Video.find()
+      .sort({ createdAt: -1 })
+      .populate('uploader', '_id username profilePic role')
+      .lean();
+    return res.json(videos);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener videos' });
+  }
+});
+
+// POST /videos/youtube — add a YouTube video link (artist/admin only)
+app.post('/videos/youtube', async (req, res) => {
+  try {
+    const { title, description, youtubeUrl, uploaderId } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ error: 'El título es obligatorio' });
+    if (!uploaderId) return res.status(400).json({ error: 'Falta uploaderId' });
+    if (!youtubeUrl) return res.status(400).json({ error: 'Falta el link de YouTube' });
+
+    const uploader = await User.findById(uploaderId).select('_id role');
+    if (!uploader) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (uploader.role !== 'artist' && uploader.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo artistas o admins pueden agregar videos' });
+    }
+
+    const youtubeId = extractYoutubeId(youtubeUrl);
+    if (!youtubeId) return res.status(400).json({ error: 'URL de YouTube inválida. Usa un link de youtube.com o youtu.be' });
+
+    const video = new Video({
+      title: title.trim(),
+      description: String(description || '').trim(),
+      type: 'youtube',
+      youtubeId,
+      thumbnailUrl: `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`,
+      uploader: uploaderId,
+      orientation: 'horizontal',
+    });
+    await video.save();
+    await video.populate('uploader', '_id username profilePic role');
+    return res.status(201).json(video);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al agregar video de YouTube' });
+  }
+});
+
+// POST /videos/upload — upload a video file (artist/admin only)
+app.post('/videos/upload', (req, res) => {
+  upload.single('video')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      console.error('Error de upload de video:', uploadErr.message || uploadErr);
+      return res.status(500).json({ error: `Error al subir video: ${uploadErr.message || 'fallo de Cloudinary'}` });
+    }
+    try {
+      const { title, description, uploaderId, orientation } = req.body;
+      if (!title || !title.trim()) return res.status(400).json({ error: 'El título es obligatorio' });
+      if (!uploaderId) return res.status(400).json({ error: 'Falta uploaderId' });
+      if (!req.file) return res.status(400).json({ error: 'Falta el archivo de video' });
+
+      const uploader = await User.findById(uploaderId).select('_id role');
+      if (!uploader) return res.status(404).json({ error: 'Usuario no encontrado' });
+      if (uploader.role !== 'artist' && uploader.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo artistas o admins pueden subir videos' });
+      }
+
+      const videoUrl = req.file.path;
+      // Generate Cloudinary thumbnail by swapping extension to .jpg and adding eager transform
+      let thumbnailUrl = '';
+      if (videoUrl && videoUrl.includes('cloudinary.com')) {
+        thumbnailUrl = videoUrl.replace(/\.(mp4|mov|avi|webm|mkv)$/i, '.jpg').replace('/video/upload/', '/video/upload/so_0/');
+      }
+
+      const video = new Video({
+        title: title.trim(),
+        description: String(description || '').trim(),
+        type: 'upload',
+        videoUrl,
+        thumbnailUrl,
+        uploader: uploaderId,
+        orientation: orientation === 'vertical' ? 'vertical' : 'horizontal',
+      });
+      await video.save();
+      await video.populate('uploader', '_id username profilePic role');
+      return res.status(201).json(video);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al guardar el video' });
+    }
+  });
+});
+
+// POST /videos/:videoId/view — increment view count
+app.post('/videos/:videoId/view', async (req, res) => {
+  try {
+    const video = await Video.findByIdAndUpdate(
+      req.params.videoId,
+      { $inc: { views: 1 } },
+      { new: true }
+    ).select('_id views');
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+    return res.json({ views: video.views });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error al registrar reproducción' });
+  }
+});
+
+// DELETE /videos/:videoId — delete a video (uploader or admin)
+app.delete('/videos/:videoId', async (req, res) => {
+  try {
+    const { requesterId } = req.body;
+    if (!requesterId) return res.status(400).json({ error: 'Falta requesterId' });
+
+    const video = await Video.findById(req.params.videoId).select('_id uploader videoUrl type');
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) return res.status(403).json({ error: 'Usuario no encontrado' });
+
+    const isOwner = String(video.uploader) === String(requesterId);
+    const isAdmin = requester.role === 'admin';
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Sin permiso para eliminar este video' });
+
+    // Delete from Cloudinary if it was uploaded
+    if (video.type === 'upload' && video.videoUrl && video.videoUrl.includes('cloudinary.com')) {
+      try {
+        const publicIdMatch = video.videoUrl.match(/\/rtn_music\/([^.]+)/);
+        if (publicIdMatch) {
+          await cloudinary.uploader.destroy(`rtn_music/${publicIdMatch[1]}`, { resource_type: 'video' });
+        }
+      } catch (cloudErr) {
+        console.error('Error borrando video de Cloudinary:', cloudErr.message);
+      }
+    }
+
+    await Video.findByIdAndDelete(req.params.videoId);
+    return res.json({ message: 'Video eliminado correctamente' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al eliminar video' });
   }
 });

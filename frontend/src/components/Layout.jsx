@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell, FileText, X } from 'lucide-react';
+import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell, FileText, X, Film } from 'lucide-react';
 import Aurora from './Aurora';
 
 const LYRIC_TS_REGEX = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
@@ -137,6 +137,12 @@ const Layout = ({
               className={`flex items-center gap-4 transition-all text-left w-full group ${view === 'buscar' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'}`}
             >
               <Search size={22} className={view === 'buscar' ? 'text-yellow-400' : 'group-hover:text-yellow-400'} /> Explorar
+            </button>
+            <button 
+              onClick={() => setView('media')}
+              className={`flex items-center gap-4 transition-all text-left w-full group ${view === 'media' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Film size={22} className={view === 'media' ? 'text-yellow-400' : 'group-hover:text-yellow-400'} /> Media
             </button>
             <button 
               onClick={() => setView('perfil')}
@@ -482,6 +488,10 @@ const Layout = ({
               <span className="text-[9px] font-bold text-yellow-400">Subir</span>
             </button>
           )}
+          <button onClick={() => setView('media')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+            <Film size={22} className={view === 'media' ? 'text-yellow-400' : 'text-gray-500'} />
+            <span className={`text-[9px] font-bold ${view === 'media' ? 'text-yellow-400' : 'text-gray-500'}`}>Media</span>
+          </button>
           <button onClick={() => setView('perfil')} className="flex flex-col items-center gap-0.5 py-1 px-3">
             <Library size={22} className={view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'} />
             <span className={`text-[9px] font-bold ${view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'}`}>Mi Crew</span>

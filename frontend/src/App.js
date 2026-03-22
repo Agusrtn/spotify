@@ -185,6 +185,11 @@ const getAlbumPlayCount = (album) => {
   return songs.reduce((sum, song) => sum + getSongPlayCount(song), 0);
 };
 
+const extractYoutubeId = (url) => {
+  const match = String(url || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/))([A-Za-z0-9_-]{11})/);
+  return match ? match[1] : null;
+};
+
 const normalizeInstagramPostUrl = (url = '') => {
   const trimmed = String(url).trim();
   if (!trimmed) return '';
@@ -353,6 +358,16 @@ function App() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [settingsLoading, setSettingsLoading] = useState(false);
+
+  // Media / Videos
+  const [videos, setVideos] = useState([]);
+  const [videosLoading, setVideosLoading] = useState(false);
+  const [activeVideo, setActiveVideo] = useState(null);
+  const [videoUploadOpen, setVideoUploadOpen] = useState(false);
+  const [videoUploadTab, setVideoUploadTab] = useState('youtube'); // 'youtube' | 'upload'
+  const [videoUploadForm, setVideoUploadForm] = useState({ title: '', description: '', youtubeUrl: '', orientation: 'horizontal' });
+  const [videoUploadFile, setVideoUploadFile] = useState(null);
+  const [videoUploadLoading, setVideoUploadLoading] = useState(false);
   const [instagramActionLoading, setInstagramActionLoading] = useState(false);
   const [instagramConfig, setInstagramConfig] = useState({ checked: false, configured: true, missing: [] });
   const [members, setMembers] = useState([]);
@@ -510,6 +525,17 @@ function App() {
     } catch (err) {
       console.error('Error fetching all songs:', err);
     }
+  };
+
+  const fetchVideos = async () => {
+    setVideosLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/videos`);
+      if (res.ok) setVideos(await res.json());
+    } catch (err) {
+      console.error('Error fetching videos:', err);
+    }
+    setVideosLoading(false);
   };
 
   const fetchPlaylists = async () => {
@@ -924,6 +950,7 @@ function App() {
     fetchPlaylists();
     fetchAlbums();
     if (user?._id) fetchUserPlaylists();
+    fetchVideos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1030,6 +1057,11 @@ function App() {
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, artistProfile?.artist?._id, artistProfile?.artist?.instagramLinked]);
+
+  useEffect(() => {
+    if (view === 'media') fetchVideos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2787,6 +2819,249 @@ function App() {
                 )}
               </div>
             </section>
+          </div>
+        </div>
+      )}
+
+      {view === 'media' && (
+        <div className="animate-in slide-in-from-bottom-4 duration-500">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">Media</h1>
+              <p className="text-gray-500 text-sm mt-1">Videos de la crew — subí el tuyo o añadí un link de YouTube</p>
+            </div>
+            {(user.role === 'artist' || user.role === 'admin') && (
+              <button
+                onClick={() => { setVideoUploadOpen(true); setVideoUploadForm({ title: '', description: '', youtubeUrl: '', orientation: 'horizontal' }); setVideoUploadFile(null); setVideoUploadTab('youtube'); }}
+                className="flex items-center gap-2 bg-yellow-400 text-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-2xl hover:shadow-[0_0_20px_rgba(250,204,21,0.4)] transition-all active:scale-95"
+              >
+                <Plus size={16} /> Subir Video
+              </button>
+            )}
+          </div>
+
+          {videosLoading ? (
+            <div className="flex justify-center py-20">
+              <div className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : videos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4 text-gray-600">
+              <div className="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="currentColor"/></svg>
+              </div>
+              <p className="text-sm font-bold uppercase tracking-widest">No hay videos todavía</p>
+              {(user.role === 'artist' || user.role === 'admin') && (
+                <p className="text-xs text-gray-700">Sé el primero en subir un video</p>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {videos.map((vid) => {
+                const thumb = vid.thumbnailUrl || (vid.type === 'youtube' ? `https://img.youtube.com/vi/${vid.youtubeId}/hqdefault.jpg` : '');
+                const isOwnerOrAdmin = String(vid.uploader?._id) === String(user._id) || user.role === 'admin';
+                return (
+                  <div key={vid._id} className="group relative bg-white/[0.03] border border-white/10 rounded-3xl overflow-hidden hover:border-yellow-400/30 transition-all cursor-pointer" onClick={() => { setActiveVideo(vid); fetch(`${API_URL}/videos/${vid._id}/view`, { method: 'POST' }).then(() => setVideos((prev) => prev.map((v) => v._id === vid._id ? { ...v, views: (v.views || 0) + 1 } : v))).catch(() => {}); }}>
+                    {/* Thumbnail */}
+                    <div className={`relative bg-black/60 overflow-hidden ${vid.orientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                      {thumb ? (
+                        <img src={thumb} alt={vid.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-yellow-400/10 to-black flex items-center justify-center">
+                          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="#facc1580"/></svg>
+                        </div>
+                      )}
+                      {/* Play overlay */}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <div className="w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center shadow-xl shadow-yellow-400/40">
+                          <Play size={22} fill="black" className="text-black ml-1" />
+                        </div>
+                      </div>
+                      {/* YouTube badge */}
+                      {vid.type === 'youtube' && (
+                        <div className="absolute top-2 right-2 bg-red-600 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full">YT</div>
+                      )}
+                      {/* Orientation badge */}
+                      {vid.orientation === 'vertical' && (
+                        <div className="absolute top-2 left-2 bg-black/60 text-gray-300 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10">Vertical</div>
+                      )}
+                    </div>
+                    {/* Info */}
+                    <div className="p-4">
+                      <p className="font-black text-sm truncate">{vid.title}</p>
+                      {vid.description && <p className="text-gray-500 text-xs mt-0.5 truncate">{vid.description}</p>}
+                      <div className="flex items-center justify-between mt-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-yellow-400 overflow-hidden flex-shrink-0 flex items-center justify-center text-[9px] font-black text-black">
+                            {vid.uploader?.profilePic ? <img src={vid.uploader.profilePic} alt={vid.uploader.username} className="w-full h-full object-cover" /> : (vid.uploader?.username || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-gray-400 text-xs font-bold truncate max-w-[100px]">{vid.uploader?.username || 'Artista'}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-gray-600 text-[10px] font-bold">{formatPlayCount(vid.views || 0)} views</span>
+                          {isOwnerOrAdmin && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar "${vid.title}"?`)) { fetch(`${API_URL}/videos/${vid._id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId: user._id }) }).then((r) => { if (r.ok) { setVideos((prev) => prev.filter((v) => v._id !== vid._id)); showToast('Video eliminado', 'success'); } else showToast('No se pudo eliminar', 'error'); }).catch(() => showToast('Error al eliminar', 'error')); } }}
+                              className="w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center transition-colors"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VIDEO PLAYER MODAL */}
+      {activeVideo && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setActiveVideo(null)}>
+          <div className={`relative bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl ${activeVideo.orientation === 'vertical' ? 'w-full max-w-sm' : 'w-full max-w-4xl'}`} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setActiveVideo(null)} className="absolute top-4 right-4 z-10 w-9 h-9 bg-black/60 backdrop-blur-md border border-white/20 rounded-xl flex items-center justify-center text-gray-300 hover:text-white hover:border-white/40 transition-all">
+              <X size={16} />
+            </button>
+            {activeVideo.type === 'youtube' ? (
+              <div className={`${activeVideo.orientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                <iframe
+                  src={`https://www.youtube.com/embed/${activeVideo.youtubeId}?autoplay=1&rel=0`}
+                  title={activeVideo.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full"
+                />
+              </div>
+            ) : (
+              <div className={`${activeVideo.orientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} bg-black`}>
+                <video
+                  src={activeVideo.videoUrl}
+                  controls
+                  autoPlay
+                  className="w-full h-full"
+                  style={{ maxHeight: '80vh' }}
+                />
+              </div>
+            )}
+            <div className="p-4 md:p-6">
+              <p className="font-black text-lg md:text-xl">{activeVideo.title}</p>
+              {activeVideo.description && <p className="text-gray-400 text-sm mt-1">{activeVideo.description}</p>}
+              <div className="flex items-center gap-3 mt-3">
+                <div className="w-7 h-7 rounded-full bg-yellow-400 overflow-hidden flex-shrink-0 flex items-center justify-center text-[10px] font-black text-black">
+                  {activeVideo.uploader?.profilePic ? <img src={activeVideo.uploader.profilePic} alt={activeVideo.uploader.username} className="w-full h-full object-cover" /> : (activeVideo.uploader?.username || '?').charAt(0).toUpperCase()}
+                </div>
+                <span className="text-yellow-400 text-xs font-bold uppercase tracking-widest">{activeVideo.uploader?.username || 'Artista'}</span>
+                <span className="text-gray-600 text-xs ml-auto">{formatPlayCount((activeVideo.views || 0) + 1)} views</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIDEO UPLOAD MODAL */}
+      {videoUploadOpen && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
+          <div className="bg-[#111] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-white/10">
+              <h2 className="font-black text-lg uppercase tracking-widest">Subir Video</h2>
+              <button onClick={() => setVideoUploadOpen(false)} className="w-9 h-9 rounded-xl border border-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            {/* Tabs */}
+            <div className="flex border-b border-white/10">
+              <button onClick={() => setVideoUploadTab('youtube')} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest transition-all ${videoUploadTab === 'youtube' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500 hover:text-white'}`}>
+                Link YouTube
+              </button>
+              <button onClick={() => setVideoUploadTab('upload')} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest transition-all ${videoUploadTab === 'upload' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500 hover:text-white'}`}>
+                Subir Archivo
+              </button>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              <input
+                type="text"
+                placeholder="Título del video *"
+                value={videoUploadForm.title}
+                onChange={(e) => setVideoUploadForm((f) => ({ ...f, title: e.target.value }))}
+                className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:border-yellow-400 transition-all"
+              />
+              <input
+                type="text"
+                placeholder="Descripción (opcional)"
+                value={videoUploadForm.description}
+                onChange={(e) => setVideoUploadForm((f) => ({ ...f, description: e.target.value }))}
+                className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm outline-none focus:border-yellow-400 transition-all"
+              />
+              {videoUploadTab === 'youtube' ? (
+                <input
+                  type="url"
+                  placeholder="https://www.youtube.com/watch?v=... o https://youtu.be/..."
+                  value={videoUploadForm.youtubeUrl}
+                  onChange={(e) => setVideoUploadForm((f) => ({ ...f, youtubeUrl: e.target.value }))}
+                  className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm outline-none focus:border-yellow-400 transition-all"
+                />
+              ) : (
+                <>
+                  <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-white/10 rounded-2xl py-6 cursor-pointer hover:border-yellow-400/40 transition-all" onClick={() => document.getElementById('video-file-input').click()}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#facc1580" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="#facc1540"/></svg>
+                    {videoUploadFile ? (
+                      <span className="text-xs font-bold text-yellow-400">{videoUploadFile.name}</span>
+                    ) : (
+                      <span className="text-xs text-gray-500">Seleccioná un video (MP4, MOV, WebM)</span>
+                    )}
+                    <input id="video-file-input" type="file" accept="video/*" className="hidden" onChange={(e) => setVideoUploadFile(e.target.files?.[0] || null)} />
+                  </label>
+                  <div className="flex gap-3">
+                    <button onClick={() => setVideoUploadForm((f) => ({ ...f, orientation: 'horizontal' }))} className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${videoUploadForm.orientation === 'horizontal' ? 'bg-yellow-400 text-black border-yellow-400' : 'bg-transparent text-gray-500 border-white/10 hover:border-white/30'}`}>
+                      Horizontal
+                    </button>
+                    <button onClick={() => setVideoUploadForm((f) => ({ ...f, orientation: 'vertical' }))} className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${videoUploadForm.orientation === 'vertical' ? 'bg-yellow-400 text-black border-yellow-400' : 'bg-transparent text-gray-500 border-white/10 hover:border-white/30'}`}>
+                      Vertical
+                    </button>
+                  </div>
+                </>
+              )}
+              <button
+                disabled={videoUploadLoading || !videoUploadForm.title.trim() || (videoUploadTab === 'youtube' && !extractYoutubeId(videoUploadForm.youtubeUrl)) || (videoUploadTab === 'upload' && !videoUploadFile)}
+                onClick={async () => {
+                  setVideoUploadLoading(true);
+                  try {
+                    let newVideo;
+                    if (videoUploadTab === 'youtube') {
+                      const r = await fetch(`${API_URL}/videos/youtube`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: videoUploadForm.title.trim(), description: videoUploadForm.description.trim(), youtubeUrl: videoUploadForm.youtubeUrl, uploaderId: user._id }),
+                      });
+                      if (!r.ok) { const e = await r.json(); showToast(e.error || 'Error al agregar video', 'error'); setVideoUploadLoading(false); return; }
+                      newVideo = await r.json();
+                    } else {
+                      const fd = new FormData();
+                      fd.append('video', videoUploadFile);
+                      fd.append('title', videoUploadForm.title.trim());
+                      fd.append('description', videoUploadForm.description.trim());
+                      fd.append('uploaderId', user._id);
+                      fd.append('orientation', videoUploadForm.orientation);
+                      const r = await fetch(`${API_URL}/videos/upload`, { method: 'POST', body: fd });
+                      if (!r.ok) { const e = await r.json(); showToast(e.error || 'Error al subir video', 'error'); setVideoUploadLoading(false); return; }
+                      newVideo = await r.json();
+                    }
+                    setVideos((prev) => [newVideo, ...prev]);
+                    setVideoUploadOpen(false);
+                    showToast('Video publicado', 'success');
+                  } catch (err) {
+                    showToast('Error de conexión', 'error');
+                  }
+                  setVideoUploadLoading(false);
+                }}
+                className="w-full py-3 bg-yellow-400 text-black font-black text-sm uppercase tracking-widest rounded-2xl disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-[0_0_20px_rgba(250,204,21,0.4)] transition-all"
+              >
+                {videoUploadLoading ? 'Publicando...' : 'Publicar'}
+              </button>
+            </div>
           </div>
         </div>
       )}
