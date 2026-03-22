@@ -370,6 +370,7 @@ function App() {
   const [videoUploadForm, setVideoUploadForm] = useState({ title: '', description: '', youtubeUrl: '', orientation: 'horizontal' });
   const [videoUploadFile, setVideoUploadFile] = useState(null);
   const [videoUploadLoading, setVideoUploadLoading] = useState(false);
+  const [videoUploadAsRTN, setVideoUploadAsRTN] = useState(false);
   const [instagramActionLoading, setInstagramActionLoading] = useState(false);
   const [instagramConfig, setInstagramConfig] = useState({ checked: false, configured: true, missing: [] });
   const [members, setMembers] = useState([]);
@@ -451,6 +452,9 @@ function App() {
     () => allSongs.slice(crewSongsPage * crewSongsPageSize, (crewSongsPage + 1) * crewSongsPageSize),
     [allSongs, crewSongsPage]
   );
+
+  const rtnVideos = useMemo(() => videos.filter((v) => String(v.uploader?._id) === RTN_MUSIC_USER_ID), [videos]);
+  const crewVideos = useMemo(() => videos.filter((v) => String(v.uploader?._id) !== RTN_MUSIC_USER_ID), [videos]);
 
   const animatePageMove = (step, maxIndex, setDirection, setTick, setIndex) => {
     if (!Number.isFinite(step) || step === 0) return;
@@ -2827,96 +2831,132 @@ function App() {
 
       {view === 'media' && (
         <div className="animate-in slide-in-from-bottom-4 duration-500">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">Media</h1>
-              <p className="text-gray-500 text-sm mt-1">Videos de la crew — subí el tuyo o añadí un link de YouTube</p>
+
+          {/* ── RTN MUSIC ── */}
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-yellow-400 flex items-center justify-center flex-shrink-0 shadow-lg shadow-yellow-400/20">
+                  <span className="text-black font-black text-xl">R</span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-xl font-black uppercase tracking-tight">RTN MUSIC</h2>
+                    <span className="text-[9px] text-yellow-400 font-black uppercase tracking-widest border border-yellow-400/30 bg-yellow-400/10 px-2 py-0.5 rounded-full">Canal Oficial</span>
+                  </div>
+                  <p className="text-gray-500 text-xs mt-0.5">{rtnVideos.length} {rtnVideos.length === 1 ? 'video' : 'videos'}</p>
+                </div>
+              </div>
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => { setVideoUploadOpen(true); setVideoUploadAsRTN(true); setVideoUploadForm({ title: '', description: '', youtubeUrl: '', orientation: 'horizontal' }); setVideoUploadFile(null); setVideoUploadTab('youtube'); }}
+                  className="flex items-center gap-2 bg-yellow-400 text-black text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-2xl hover:shadow-[0_0_20px_rgba(250,204,21,0.4)] transition-all active:scale-95"
+                >
+                  <Plus size={14} /> Video RTN
+                </button>
+              )}
             </div>
-            {(user.role === 'artist' || user.role === 'admin') && (
-              <button
-                onClick={() => { setVideoUploadOpen(true); setVideoUploadForm({ title: '', description: '', youtubeUrl: '', orientation: 'horizontal' }); setVideoUploadFile(null); setVideoUploadTab('youtube'); }}
-                className="flex items-center gap-2 bg-yellow-400 text-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-2xl hover:shadow-[0_0_20px_rgba(250,204,21,0.4)] transition-all active:scale-95"
-              >
-                <Plus size={16} /> Subir Video
-              </button>
+            {videosLoading ? (
+              <div className="flex justify-center py-10"><div className="w-7 h-7 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" /></div>
+            ) : rtnVideos.length === 0 ? (
+              <div className="flex items-center justify-center py-10 gap-3 text-gray-700">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="currentColor"/></svg>
+                <p className="text-xs font-bold uppercase tracking-widest">Sin videos publicados todavía</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {rtnVideos.map((vid) => {
+                  const thumb = vid.thumbnailUrl || (vid.type === 'youtube' ? `https://img.youtube.com/vi/${vid.youtubeId}/hqdefault.jpg` : '');
+                  const isOwnerOrAdmin = String(vid.uploader?._id) === String(user._id) || user.role === 'admin';
+                  return (
+                    <div key={vid._id} className="group relative bg-white/[0.03] border border-white/10 rounded-3xl overflow-hidden hover:border-yellow-400/30 transition-all cursor-pointer" onClick={() => { setActiveVideo(vid); fetch(`${API_URL}/videos/${vid._id}/view`, { method: 'POST' }).then(() => setVideos((prev) => prev.map((v) => v._id === vid._id ? { ...v, views: (v.views || 0) + 1 } : v))).catch(() => {}); }}>
+                      <div className={`relative bg-black/60 overflow-hidden ${vid.orientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                        {thumb ? <img src={thumb} alt={vid.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className="w-full h-full bg-gradient-to-br from-yellow-400/10 to-black flex items-center justify-center"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="#facc1580"/></svg></div>}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><div className="w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center shadow-xl shadow-yellow-400/40"><Play size={22} fill="black" className="text-black ml-1" /></div></div>
+                        {vid.type === 'youtube' && <div className="absolute top-2 right-2 bg-red-600 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full">YT</div>}
+                        {vid.orientation === 'vertical' && <div className="absolute top-2 left-2 bg-black/60 text-gray-300 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10">Vertical</div>}
+                      </div>
+                      <div className="p-4">
+                        <p className="font-black text-sm truncate">{vid.title}</p>
+                        {vid.description && <p className="text-gray-500 text-xs mt-0.5 truncate">{vid.description}</p>}
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-yellow-400 overflow-hidden flex-shrink-0 flex items-center justify-center text-[9px] font-black text-black">{vid.uploader?.profilePic ? <img src={vid.uploader.profilePic} alt={vid.uploader.username} className="w-full h-full object-cover" /> : (vid.uploader?.username || '?').charAt(0).toUpperCase()}</div>
+                            <span className="text-gray-400 text-xs font-bold truncate max-w-[100px]">{vid.uploader?.username || 'Artista'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-600 text-[10px] font-bold">{formatPlayCount(vid.views || 0)} views</span>
+                            {isOwnerOrAdmin && <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar "${vid.title}"?`)) { fetch(`${API_URL}/videos/${vid._id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId: user._id }) }).then((r) => { if (r.ok) { setVideos((prev) => prev.filter((v) => v._id !== vid._id)); showToast('Video eliminado', 'success'); } else showToast('No se pudo eliminar', 'error'); }).catch(() => showToast('Error al eliminar', 'error')); } }} className="w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center transition-colors"><Trash2 size={11} /></button>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
-          {videosLoading ? (
-            <div className="flex justify-center py-20">
-              <div className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : videos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-4 text-gray-600">
-              <div className="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="currentColor"/></svg>
+          {/* divider */}
+          <div className="border-t border-white/5 mb-12" />
+
+          {/* ── La Crew ── */}
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-black uppercase tracking-tight">La Crew</h2>
+                <p className="text-gray-500 text-xs mt-0.5">{crewVideos.length} {crewVideos.length === 1 ? 'video' : 'videos'} de la comunidad</p>
               </div>
-              <p className="text-sm font-bold uppercase tracking-widest">No hay videos todavía</p>
               {(user.role === 'artist' || user.role === 'admin') && (
-                <p className="text-xs text-gray-700">Sé el primero en subir un video</p>
+                <button
+                  onClick={() => { setVideoUploadOpen(true); setVideoUploadAsRTN(false); setVideoUploadForm({ title: '', description: '', youtubeUrl: '', orientation: 'horizontal' }); setVideoUploadFile(null); setVideoUploadTab('youtube'); }}
+                  className="flex items-center gap-2 bg-white/10 border border-white/10 text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-2xl hover:bg-white/15 transition-all active:scale-95"
+                >
+                  <Plus size={14} /> Subir Video
+                </button>
               )}
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {videos.map((vid) => {
-                const thumb = vid.thumbnailUrl || (vid.type === 'youtube' ? `https://img.youtube.com/vi/${vid.youtubeId}/hqdefault.jpg` : '');
-                const isOwnerOrAdmin = String(vid.uploader?._id) === String(user._id) || user.role === 'admin';
-                return (
-                  <div key={vid._id} className="group relative bg-white/[0.03] border border-white/10 rounded-3xl overflow-hidden hover:border-yellow-400/30 transition-all cursor-pointer" onClick={() => { setActiveVideo(vid); fetch(`${API_URL}/videos/${vid._id}/view`, { method: 'POST' }).then(() => setVideos((prev) => prev.map((v) => v._id === vid._id ? { ...v, views: (v.views || 0) + 1 } : v))).catch(() => {}); }}>
-                    {/* Thumbnail */}
-                    <div className={`relative bg-black/60 overflow-hidden ${vid.orientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'}`}>
-                      {thumb ? (
-                        <img src={thumb} alt={vid.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-yellow-400/10 to-black flex items-center justify-center">
-                          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="#facc1580"/></svg>
-                        </div>
-                      )}
-                      {/* Play overlay */}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <div className="w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center shadow-xl shadow-yellow-400/40">
-                          <Play size={22} fill="black" className="text-black ml-1" />
-                        </div>
+            {videosLoading ? (
+              <div className="flex justify-center py-10"><div className="w-7 h-7 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" /></div>
+            ) : crewVideos.length === 0 ? (
+              <div className="flex items-center justify-center py-10 gap-3 text-gray-700">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="currentColor"/></svg>
+                <p className="text-xs font-bold uppercase tracking-widest">Todavía no hay videos de la crew</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {crewVideos.map((vid) => {
+                  const thumb = vid.thumbnailUrl || (vid.type === 'youtube' ? `https://img.youtube.com/vi/${vid.youtubeId}/hqdefault.jpg` : '');
+                  const isOwnerOrAdmin = String(vid.uploader?._id) === String(user._id) || user.role === 'admin';
+                  return (
+                    <div key={vid._id} className="group relative bg-white/[0.03] border border-white/10 rounded-3xl overflow-hidden hover:border-yellow-400/30 transition-all cursor-pointer" onClick={() => { setActiveVideo(vid); fetch(`${API_URL}/videos/${vid._id}/view`, { method: 'POST' }).then(() => setVideos((prev) => prev.map((v) => v._id === vid._id ? { ...v, views: (v.views || 0) + 1 } : v))).catch(() => {}); }}>
+                      <div className={`relative bg-black/60 overflow-hidden ${vid.orientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                        {thumb ? <img src={thumb} alt={vid.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className="w-full h-full bg-gradient-to-br from-yellow-400/10 to-black flex items-center justify-center"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="1.5"><rect x="2" y="5" width="20" height="14" rx="3"/><polygon points="10,9 16,12 10,15" fill="#facc1580"/></svg></div>}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><div className="w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center shadow-xl shadow-yellow-400/40"><Play size={22} fill="black" className="text-black ml-1" /></div></div>
+                        {vid.type === 'youtube' && <div className="absolute top-2 right-2 bg-red-600 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full">YT</div>}
+                        {vid.orientation === 'vertical' && <div className="absolute top-2 left-2 bg-black/60 text-gray-300 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10">Vertical</div>}
                       </div>
-                      {/* YouTube badge */}
-                      {vid.type === 'youtube' && (
-                        <div className="absolute top-2 right-2 bg-red-600 text-white text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full">YT</div>
-                      )}
-                      {/* Orientation badge */}
-                      {vid.orientation === 'vertical' && (
-                        <div className="absolute top-2 left-2 bg-black/60 text-gray-300 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10">Vertical</div>
-                      )}
-                    </div>
-                    {/* Info */}
-                    <div className="p-4">
-                      <p className="font-black text-sm truncate">{vid.title}</p>
-                      {vid.description && <p className="text-gray-500 text-xs mt-0.5 truncate">{vid.description}</p>}
-                      <div className="flex items-center justify-between mt-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-yellow-400 overflow-hidden flex-shrink-0 flex items-center justify-center text-[9px] font-black text-black">
-                            {vid.uploader?.profilePic ? <img src={vid.uploader.profilePic} alt={vid.uploader.username} className="w-full h-full object-cover" /> : (vid.uploader?.username || '?').charAt(0).toUpperCase()}
+                      <div className="p-4">
+                        <p className="font-black text-sm truncate">{vid.title}</p>
+                        {vid.description && <p className="text-gray-500 text-xs mt-0.5 truncate">{vid.description}</p>}
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-yellow-400 overflow-hidden flex-shrink-0 flex items-center justify-center text-[9px] font-black text-black">{vid.uploader?.profilePic ? <img src={vid.uploader.profilePic} alt={vid.uploader.username} className="w-full h-full object-cover" /> : (vid.uploader?.username || '?').charAt(0).toUpperCase()}</div>
+                            <span className="text-gray-400 text-xs font-bold truncate max-w-[100px]">{vid.uploader?.username || 'Artista'}</span>
                           </div>
-                          <span className="text-gray-400 text-xs font-bold truncate max-w-[100px]">{vid.uploader?.username || 'Artista'}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-gray-600 text-[10px] font-bold">{formatPlayCount(vid.views || 0)} views</span>
-                          {isOwnerOrAdmin && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar "${vid.title}"?`)) { fetch(`${API_URL}/videos/${vid._id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId: user._id }) }).then((r) => { if (r.ok) { setVideos((prev) => prev.filter((v) => v._id !== vid._id)); showToast('Video eliminado', 'success'); } else showToast('No se pudo eliminar', 'error'); }).catch(() => showToast('Error al eliminar', 'error')); } }}
-                              className="w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center transition-colors"
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          )}
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-600 text-[10px] font-bold">{formatPlayCount(vid.views || 0)} views</span>
+                            {isOwnerOrAdmin && <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`¿Eliminar "${vid.title}"?`)) { fetch(`${API_URL}/videos/${vid._id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId: user._id }) }).then((r) => { if (r.ok) { setVideos((prev) => prev.filter((v) => v._id !== vid._id)); showToast('Video eliminado', 'success'); } else showToast('No se pudo eliminar', 'error'); }).catch(() => showToast('Error al eliminar', 'error')); } }} className="w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center transition-colors"><Trash2 size={11} /></button>}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 
@@ -2968,11 +3008,17 @@ function App() {
         <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
           <div className="bg-[#111] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between p-6 border-b border-white/10">
-              <h2 className="font-black text-lg uppercase tracking-widest">Subir Video</h2>
+              <h2 className="font-black text-lg uppercase tracking-widest">{videoUploadAsRTN ? 'Video RTN MUSIC' : 'Subir Video'}</h2>
               <button onClick={() => setVideoUploadOpen(false)} className="w-9 h-9 rounded-xl border border-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
                 <X size={16} />
               </button>
             </div>
+            {videoUploadAsRTN && (
+              <div className="mx-6 mt-3 flex items-center gap-3 bg-yellow-400/10 border border-yellow-400/20 rounded-2xl px-4 py-2.5">
+                <div className="w-6 h-6 rounded-lg bg-yellow-400 flex items-center justify-center flex-shrink-0"><span className="text-black font-black text-xs">R</span></div>
+                <span className="text-yellow-400 text-xs font-black uppercase tracking-widest">Publicando como RTN MUSIC</span>
+              </div>
+            )}
             {/* Tabs */}
             <div className="flex border-b border-white/10">
               <button onClick={() => setVideoUploadTab('youtube')} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest transition-all ${videoUploadTab === 'youtube' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500 hover:text-white'}`}>
@@ -3036,7 +3082,7 @@ function App() {
                       const r = await fetch(`${API_URL}/videos/youtube`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ title: videoUploadForm.title.trim(), description: videoUploadForm.description.trim(), youtubeUrl: videoUploadForm.youtubeUrl, uploaderId: user._id }),
+                        body: JSON.stringify({ title: videoUploadForm.title.trim(), description: videoUploadForm.description.trim(), youtubeUrl: videoUploadForm.youtubeUrl, uploaderId: videoUploadAsRTN ? RTN_MUSIC_USER_ID : user._id }),
                       });
                       if (!r.ok) { const e = await r.json(); showToast(e.error || 'Error al agregar video', 'error'); setVideoUploadLoading(false); return; }
                       newVideo = await r.json();
@@ -3045,7 +3091,7 @@ function App() {
                       fd.append('video', videoUploadFile);
                       fd.append('title', videoUploadForm.title.trim());
                       fd.append('description', videoUploadForm.description.trim());
-                      fd.append('uploaderId', user._id);
+                      fd.append('uploaderId', videoUploadAsRTN ? RTN_MUSIC_USER_ID : user._id);
                       fd.append('orientation', videoUploadForm.orientation);
                       const r = await fetch(`${API_URL}/videos/upload`, { method: 'POST', body: fd });
                       if (!r.ok) { const e = await r.json(); showToast(e.error || 'Error al subir video', 'error'); setVideoUploadLoading(false); return; }
@@ -3068,8 +3114,7 @@ function App() {
         </div>
       )}
 
-      {view === 'rtnmusic' && (() => {
-        const rtnVideos = videos.filter((v) => String(v.uploader?._id) === RTN_MUSIC_USER_ID);
+      {false && (() => {
         return (
           <div className="animate-in slide-in-from-bottom-4 duration-500">
             {/* Hero banner */}
