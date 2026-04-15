@@ -5797,7 +5797,14 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
                         ))}
                       </div>
                     )}
-                
+                  </div>
+                  <button type="button" onClick={() => removeCollaborator(i)} className="p-2 mt-1 text-gray-500 hover:text-red-400 flex-shrink-0">
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="border-t border-white/10 pt-4">
             <label className="flex items-center gap-3 mb-3">
@@ -5824,13 +5831,6 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
                 <p className="text-[10px] text-gray-400 mt-2">La canción se publicará automáticamente en la fecha y hora seleccionada</p>
               </div>
             )}
-          </div>  </div>
-                  <button type="button" onClick={() => removeCollaborator(i)} className="p-2 mt-1 text-gray-500 hover:text-red-400 flex-shrink-0">
-                    <X size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
 
           <div className="flex gap-4 pt-4">
