@@ -721,6 +721,81 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_SECRET
 });
 
+// Función para publicar automáticamente elementos programados
+const publishScheduledContent = async () => {
+  try {
+    const now = new Date();
+    
+    // Publicar canciones programadas
+    const scheduledSongs = await Song.updateMany(
+      {
+        isScheduled: true,
+        isPublished: false,
+        scheduledPublishAt: { $lte: now }
+      },
+      {
+        $set: {
+          isScheduled: false,
+          isPublished: true,
+          publishedAt: now
+        }
+      }
+    );
+    
+    if (scheduledSongs.modifiedCount > 0) {
+      console.log(`📻 ${scheduledSongs.modifiedCount} canción(es) publicada(s) automáticamente`);
+    }
+    
+    // Publicar álbumes programados
+    const scheduledAlbums = await Album.updateMany(
+      {
+        isScheduled: true,
+        isPublished: false,
+        scheduledPublishAt: { $lte: now }
+      },
+      {
+        $set: {
+          isScheduled: false,
+          isPublished: true,
+          publishedAt: now
+        }
+      }
+    );
+    
+    if (scheduledAlbums.modifiedCount > 0) {
+      console.log(`💿 ${scheduledAlbums.modifiedCount} álbum(es) publicado(s) automáticamente`);
+    }
+    
+    // Publicar playlists programadas
+    const scheduledPlaylists = await Playlist.updateMany(
+      {
+        isScheduled: true,
+        isPublished: false,
+        scheduledPublishAt: { $lte: now }
+      },
+      {
+        $set: {
+          isScheduled: false,
+          isPublished: true,
+          publishedAt: now
+        }
+      }
+    );
+    
+    if (scheduledPlaylists.modifiedCount > 0) {
+      console.log(`📝 ${scheduledPlaylists.modifiedCount} playlist(s) publicada(s) automáticamente`);
+    }
+  } catch (error) {
+    console.error('❌ Error al publicar contenido programado:', error.message);
+  }
+};
+
+// Ejecutar verificación cada minuto
+setInterval(publishScheduledContent, 60 * 1000);
+
+// Ejecutar una vez al iniciar
+publishScheduledContent();
+
 app.get('/health/upload-config', async (req, res) => {
   const hasName = Boolean(process.env.CLOUDINARY_NAME);
   const hasKey = Boolean(process.env.CLOUDINARY_KEY);
@@ -1061,7 +1136,7 @@ app.post('/upload-song', (req, res) => {
     }
 
     try {
-      const { title, description, lyrics, genre, artistId, uploaderId, collaborators: collaboratorsRaw } = req.body;
+      const { title, description, lyrics, genre, artistId, uploaderId, collaborators: collaboratorsRaw, isScheduled, scheduledPublishAt } = req.body;
 
       let parsedCollaborators = [];
       if (collaboratorsRaw) {
@@ -1103,6 +1178,26 @@ app.post('/upload-song', (req, res) => {
         return res.status(500).json({ error: 'Servidor no configurado: Cloudinary sin credenciales' });
       }
 
+      // Manejo de publicación programada
+      let songIsScheduled = false;
+      let songScheduledPublishAt = null;
+      let songIsPublished = true;
+      let songPublishedAt = new Date();
+
+      if (isScheduled === 'true' || isScheduled === true) {
+        if (!scheduledPublishAt) {
+          return res.status(400).json({ error: 'Debe proporcionar una fecha de publicación programada' });
+        }
+        const scheduledDate = new Date(scheduledPublishAt);
+        if (isNaN(scheduledDate.getTime())) {
+          return res.status(400).json({ error: 'Fecha de publicación inválida' });
+        }
+        songIsScheduled = true;
+        songScheduledPublishAt = scheduledDate;
+        songIsPublished = false;
+        songPublishedAt = null;
+      }
+
       const newSong = new Song({
         title,
         description: description || '',
@@ -1112,13 +1207,19 @@ app.post('/upload-song', (req, res) => {
         audioUrl: req.files.audio[0].path,
         coverUrl: req.files.cover ? req.files.cover[0].path : '',
         collaborators: parsedCollaborators,
+        isScheduled: songIsScheduled,
+        scheduledPublishAt: songScheduledPublishAt,
+        isPublished: songIsPublished,
+        publishedAt: songPublishedAt,
       });
 
       await newSong.save();
       const populatedSong = await Song.findById(newSong._id)
         .populate('artist', 'username _id profilePic bio')
         .populate('collaborators.userId', 'username _id');
-      return res.status(201).json({ message: 'Hit publicado', song: populatedSong });
+      
+      const message = songIsScheduled ? `Hit programado para ${scheduledDate.toLocaleString('es-ES')}` : 'Hit publicado';
+      return res.status(201).json({ message, song: populatedSong });
     } catch (error) {
       console.error('Error en /upload-song:', error.message);
       return res.status(500).json({ error: `Error al subir el archivo: ${error.message}` });
@@ -2807,7 +2908,7 @@ app.post('/albums', (req, res) => {
     }
 
     try {
-      const { title, description, coverUrl, releaseYear, themeGradient, artistId, userId } = req.body;
+      const { title, description, coverUrl, releaseYear, themeGradient, artistId, userId, isScheduled, scheduledPublishAt } = req.body;
       const songIds = parseArrayField(req.body.songIds);
 
       if (!title || !userId) {
@@ -2844,6 +2945,26 @@ app.post('/albums', (req, res) => {
         }
       }
 
+      // Manejo de publicación programada
+      let albumIsScheduled = false;
+      let albumScheduledPublishAt = null;
+      let albumIsPublished = true;
+      let albumPublishedAt = new Date();
+
+      if (isScheduled === 'true' || isScheduled === true) {
+        if (!scheduledPublishAt) {
+          return res.status(400).json({ error: 'Debe proporcionar una fecha de publicación programada' });
+        }
+        const scheduledDate = new Date(scheduledPublishAt);
+        if (isNaN(scheduledDate.getTime())) {
+          return res.status(400).json({ error: 'Fecha de publicación inválida' });
+        }
+        albumIsScheduled = true;
+        albumScheduledPublishAt = scheduledDate;
+        albumIsPublished = false;
+        albumPublishedAt = null;
+      }
+
       const album = new Album({
         title,
         description: description || '',
@@ -2852,12 +2973,17 @@ app.post('/albums', (req, res) => {
         themeGradient: String(themeGradient || ''),
         artist: targetArtistId,
         songs: sanitizedSongIds,
+        isScheduled: albumIsScheduled,
+        scheduledPublishAt: albumScheduledPublishAt,
+        isPublished: albumIsPublished,
+        publishedAt: albumPublishedAt,
       });
 
       await album.save();
       await album.populate('artist', 'username profilePic role');
 
-      return res.status(201).json({ album });
+      const message = albumIsScheduled ? `Álbum programado para ${scheduledDate.toLocaleString('es-ES')}` : 'Álbum creado';
+      return res.status(201).json({ message, album });
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Error al crear álbum' });
@@ -2982,6 +3108,282 @@ app.delete('/albums/:albumId', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al eliminar álbum' });
+  }
+});
+
+// GET - Obtener contenido programado para admin (canciones y álbumes)
+app.get('/admin/scheduled-content', async (req, res) => {
+  try {
+    const type = req.query.type || 'songs'; // 'songs' o 'albums'
+
+    if (type === 'songs') {
+      const scheduledSongs = await Song.find({
+        isScheduled: true,
+        isPublished: false,
+      })
+        .populate('artist', 'username _id profilePic')
+        .populate('collaborators.userId', 'username _id')
+        .sort({ scheduledPublishAt: 1 });
+
+      return res.json({ songs: scheduledSongs });
+    } else if (type === 'albums') {
+      const scheduledAlbums = await Album.find({
+        isScheduled: true,
+        isPublished: false,
+      })
+        .populate('artist', 'username _id profilePic')
+        .populate('songs', 'title artist')
+        .sort({ scheduledPublishAt: 1 });
+
+      return res.json({ albums: scheduledAlbums });
+    } else {
+      return res.status(400).json({ error: 'Tipo de contenido inválido' });
+    }
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener contenido programado' });
+  }
+});
+
+// RUTA DE CONTENIDO PROGRAMADO
+app.get('/scheduled-songs/:artistId', async (req, res) => {
+  try {
+    const { artistId } = req.params;
+    
+    const songs = await Song.find({
+      artist: artistId,
+      isScheduled: true,
+      isPublished: false
+    })
+    .populate('artist', 'username _id')
+    .sort({ scheduledPublishAt: 1 });
+    
+    return res.json({ songs });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener canciones programadas' });
+  }
+});
+
+// GET - Obtener todos los álbumes programados de un artista
+app.get('/scheduled-albums/:artistId', async (req, res) => {
+  try {
+    const { artistId } = req.params;
+    
+    const albums = await Album.find({
+      artist: artistId,
+      isScheduled: true,
+      isPublished: false
+    })
+    .populate('artist', 'username _id')
+    .populate('songs', 'title')
+    .sort({ scheduledPublishAt: 1 });
+    
+    return res.json({ albums });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener álbumes programados' });
+  }
+});
+
+// PUT - Actualizar fecha de publicación programada de una canción
+app.put('/songs/:songId/reschedule', async (req, res) => {
+  try {
+    const { songId } = req.params;
+    const { userId, newScheduledDate } = req.body;
+    
+    if (!userId || !newScheduledDate) {
+      return res.status(400).json({ error: 'userId y newScheduledDate son requeridos' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    
+    const song = await Song.findById(songId);
+    if (!song) {
+      return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+    
+    if (String(song.artist) !== String(userId) && user.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para reprogramar esta canción' });
+    }
+    
+    const scheduledDate = new Date(newScheduledDate);
+    if (isNaN(scheduledDate.getTime())) {
+      return res.status(400).json({ error: 'Fecha inválida' });
+    }
+    
+    song.scheduledPublishAt = scheduledDate;
+    await song.save();
+    
+    return res.json({ 
+      message: `Canción reprogramada para ${scheduledDate.toLocaleString('es-ES')}`,
+      song 
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al reprogramar canción' });
+  }
+});
+
+// PUT - Actualizar fecha de publicación programada de un álbum
+app.put('/albums/:albumId/reschedule', async (req, res) => {
+  try {
+    const { albumId } = req.params;
+    const { userId, newScheduledDate } = req.body;
+    
+    if (!userId || !newScheduledDate) {
+      return res.status(400).json({ error: 'userId y newScheduledDate son requeridos' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    
+    const album = await Album.findById(albumId);
+    if (!album) {
+      return res.status(404).json({ error: 'Álbum no encontrado' });
+    }
+    
+    if (String(album.artist) !== String(userId) && user.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para reprogramar este álbum' });
+    }
+    
+    const scheduledDate = new Date(newScheduledDate);
+    if (isNaN(scheduledDate.getTime())) {
+      return res.status(400).json({ error: 'Fecha inválida' });
+    }
+    
+    album.scheduledPublishAt = scheduledDate;
+    await album.save();
+    
+    return res.json({ 
+      message: `Álbum reprogramado para ${scheduledDate.toLocaleString('es-ES')}`,
+      album 
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al reprogramar álbum' });
+  }
+});
+
+// DELETE - Cancelar programación de una canción (publicarla inmediatamente)
+app.post('/songs/:songId/publish-now', async (req, res) => {
+  try {
+    const { songId } = req.params;
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId es requerido' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    
+    const song = await Song.findById(songId);
+    if (!song) {
+      return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+    
+    if (String(song.artist) !== String(userId) && user.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para publicar esta canción' });
+    }
+    
+    song.isScheduled = false;
+    song.isPublished = true;
+    song.publishedAt = new Date();
+    song.scheduledPublishAt = null;
+    await song.save();
+    
+    const populatedSong = await Song.findById(songId)
+      .populate('artist', 'username _id profilePic bio')
+      .populate('collaborators.userId', 'username _id');
+    
+    return res.json({ 
+      message: 'Canción publicada inmediatamente',
+      song: populatedSong 
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al publicar canción' });
+  }
+});
+
+// DELETE - Cancelar programación de un álbum (publicarlo inmediatamente)
+app.post('/albums/:albumId/publish-now', async (req, res) => {
+  try {
+    const { albumId } = req.params;
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId es requerido' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    
+    const album = await Album.findById(albumId);
+    if (!album) {
+      return res.status(404).json({ error: 'Álbum no encontrado' });
+    }
+    
+    if (String(album.artist) !== String(userId) && user.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para publicar este álbum' });
+    }
+    
+    album.isScheduled = false;
+    album.isPublished = true;
+    album.publishedAt = new Date();
+    album.scheduledPublishAt = null;
+    await album.save();
+    
+    await album.populate('artist', 'username profilePic role');
+    
+    return res.json({ 
+      message: 'Álbum publicado inmediatamente',
+      album 
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al publicar álbum' });
+  }
+});
+
+// DELETE - Eliminar/cancelar programación de una canción
+app.delete('/songs/:songId/cancel-schedule', async (req, res) => {
+  try {
+    const { songId } = req.params;
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId es requerido' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    
+    const song = await Song.findByIdAndDelete(songId);
+    if (!song) {
+      return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+    
+    if (String(song.artist) !== String(userId) && user.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para eliminar esta canción' });
+    }
+    
+    return res.json({ message: 'Programación cancelada y canción eliminada' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al cancelar programación' });
   }
 });
 

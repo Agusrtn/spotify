@@ -347,6 +347,9 @@ function App() {
   const [artistStats, setArtistStats] = useState(null);
   const [adminTopSongs, setAdminTopSongs] = useState([]);
   const [adminTopLoading, setAdminTopLoading] = useState(false);
+  const [scheduledSongs, setScheduledSongs] = useState([]);
+  const [scheduledAlbums, setScheduledAlbums] = useState([]);
+  const [scheduledLoading, setScheduledLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -1202,12 +1205,34 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?._id, user?.role]);
 
+  const fetchScheduledContent = async () => {
+    if (!user?._id) return;
+    setScheduledLoading(true);
+    try {
+      const [songsRes, albumsRes] = await Promise.all([
+        fetch(`${API_URL}/admin/scheduled-content`),
+        fetch(`${API_URL}/admin/scheduled-content?type=albums`)
+      ]);
+      
+      const songsData = await songsRes.json().catch(() => ({ songs: [] }));
+      const albumsData = await albumsRes.json().catch(() => ({ albums: [] }));
+      
+      setScheduledSongs(Array.isArray(songsData.songs) ? songsData.songs : []);
+      setScheduledAlbums(Array.isArray(albumsData.albums) ? albumsData.albums : []);
+    } catch (err) {
+      console.error('Error al cargar contenido programado:', err);
+    } finally {
+      setScheduledLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (view === 'admin' && user?.role === 'admin') {
       fetchMembers();
       fetchAllSongs();
       fetchPlaylists();
       fetchAdminTopSongs();
+      fetchScheduledContent();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, user]);
@@ -3944,6 +3969,91 @@ function App() {
             </div>
           </section>
 
+          <section className="bg-gradient-to-br from-yellow-600/10 to-orange-600/5 p-4 md:p-8 rounded-[40px] border border-yellow-400/30">
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-xs font-black text-yellow-400 uppercase tracking-widest">📅 Contenido Programado</p>
+              <button onClick={fetchScheduledContent} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar</button>
+            </div>
+
+            {scheduledLoading ? (
+              <p className="text-gray-500 text-sm">Cargando contenido programado...</p>
+            ) : (scheduledSongs.length > 0 || scheduledAlbums.length > 0) ? (
+              <div className="space-y-6">
+                {/* Canciones programadas */}
+                {scheduledSongs.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-black text-yellow-300 uppercase tracking-widest mb-3">🎵 Canciones Programadas ({scheduledSongs.length})</h4>
+                    <div className="space-y-2 bg-black/40 rounded-2xl p-3 border border-yellow-400/20">
+                      {scheduledSongs.map((song) => (
+                        <div key={song._id} className="flex items-center gap-3 p-3 bg-black/30 rounded-xl hover:bg-black/50 transition">
+                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                            {song.coverUrl ? (
+                              <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center"><Disc size={18} className="text-yellow-400/40" /></div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-white truncate">{song.title}</p>
+                            <p className="text-[10px] text-gray-400 uppercase truncate">{song.artist?.username || 'Artista'}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[11px] text-yellow-300 font-black whitespace-nowrap">
+                              {new Date(song.scheduledPublishAt).toLocaleDateString('es-ES', { 
+                                month: 'short', 
+                                day: 'numeric', 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}
+                            </p>
+                            <p className="text-[9px] text-gray-500 uppercase">Publicación programada</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Álbumes programados */}
+                {scheduledAlbums.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-black text-yellow-300 uppercase tracking-widest mb-3">💿 Álbumes Programados ({scheduledAlbums.length})</h4>
+                    <div className="space-y-2 bg-black/40 rounded-2xl p-3 border border-yellow-400/20">
+                      {scheduledAlbums.map((album) => (
+                        <div key={album._id} className="flex items-center gap-3 p-3 bg-black/30 rounded-xl hover:bg-black/50 transition">
+                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                            {album.coverUrl ? (
+                              <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center"><Disc size={18} className="text-yellow-400/40" /></div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-white truncate">{album.title}</p>
+                            <p className="text-[10px] text-gray-400 uppercase truncate">{album.artist?.username || 'Artista'} • {album.songs?.length || 0} canciones</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[11px] text-yellow-300 font-black whitespace-nowrap">
+                              {new Date(album.scheduledPublishAt).toLocaleDateString('es-ES', { 
+                                month: 'short', 
+                                day: 'numeric', 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}
+                            </p>
+                            <p className="text-[9px] text-gray-500 uppercase">Publicación programada</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No hay contenido programado para publicar.</p>
+            )}
+          </section>
+
           <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
             <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-6">Gestión global de canciones</p>
             <div className="space-y-3">
@@ -5127,6 +5237,8 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
   const [selectedSongs, setSelectedSongs] = useState([]);
   const [previewGradient, setPreviewGradient] = useState(getRandomAlbumGradient());
   const [loading, setLoading] = useState(false);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('');
   const artistOptions = user?.role === 'admin'
     ? (members || []).filter((member) => member.role === 'artist' || member.role === 'admin')
     : [];
@@ -5145,8 +5257,8 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
         setCoverFile(null);
         setReleaseYear(Number(albumToEdit.releaseYear) || new Date().getFullYear());
         setArtistId(albumToEdit.artist?._id || user?._id || '');
-        setSelectedSongs(albumToEdit.songs?.map((s) => s._id || s) || []);
-        setPreviewGradient(albumToEdit.themeGradient || getAlbumThemeGradient(albumToEdit));
+        setIsScheduled(false);
+        setScheduledDate('');
       } else {
         setTitle('');
         setDescription('');
@@ -5154,6 +5266,10 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
         setCoverFile(null);
         setReleaseYear(new Date().getFullYear());
         setArtistId(user?._id || '');
+        setSelectedSongs([]);
+        setPreviewGradient(getRandomAlbumGradient());
+        setIsScheduled(false);
+        setScheduledDate(''
         setSelectedSongs([]);
         setPreviewGradient(getRandomAlbumGradient());
       }
@@ -5184,10 +5300,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
       setSelectedSongs((prev) => [...prev, songId]);
     }
   };
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (!title.trim()) return alert('El título del álbum es obligatorio');
+    if (isScheduled && !scheduledDate) return alert('Debes seleccionar una fecha y hora para la publicación programada');
 
     setLoading(true);
     try {
@@ -5199,6 +5312,14 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
       formData.append('artistId', artistId || user._id);
       formData.append('title', title.trim());
       formData.append('description', description.trim());
+      formData.append('coverUrl', coverUrl.trim());
+      formData.append('releaseYear', String(releaseYear));
+      formData.append('themeGradient', previewGradient);
+      formData.append('songIds', JSON.stringify(selectedSongs || []));
+      formData.append('isScheduled', isScheduled);
+      if (isScheduled) {
+        formData.append('scheduledPublishAt', new Date(scheduledDate).toISOString());
+      }
       formData.append('coverUrl', coverUrl.trim());
       formData.append('releaseYear', String(releaseYear));
       formData.append('themeGradient', previewGradient);
@@ -5331,6 +5452,34 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
           )}
         </div>
 
+        {/* Scheduling Section */}
+        <div className="bg-black/20 rounded-3xl p-4 mb-6 border border-white/5">
+          <label className="flex items-center gap-3 mb-3">
+            <input
+              type="checkbox"
+              checked={isScheduled}
+              onChange={(e) => setIsScheduled(e.target.checked)}
+              className="w-4 h-4 rounded accent-yellow-400 cursor-pointer"
+            />
+            <span className="text-sm font-bold text-white uppercase tracking-widest">Programar publicación</span>
+          </label>
+          {isScheduled && (
+            <div className="bg-black/30 border border-yellow-400/30 rounded-2xl p-4">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">
+                Fecha y hora de publicación
+              </label>
+              <input
+                type="datetime-local"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                min={new Date().toISOString().slice(0, 16)}
+                className="w-full bg-black/40 p-3 rounded-xl border border-yellow-400/50 outline-none focus:border-yellow-400 text-white text-sm font-bold"
+              />
+              <p className="text-[10px] text-gray-400 mt-2">El álbum se publicará automáticamente en la fecha y hora seleccionada</p>
+            </div>
+          )}
+        </div>
+
         {/* Buttons */}
         <div className="flex gap-4">
           <button
@@ -5397,6 +5546,8 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   const [lrcAiLoading, setLrcAiLoading] = useState(false);
   const [artistId, setArtistId] = useState(userId);
   const [collaborators, setCollaborators] = useState([]);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('');
   const collabTimerRef = useRef({});
 
   useEffect(() => {
@@ -5404,6 +5555,8 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
       setArtistId(userId);
       setCollaborators([]);
       setGenre('otro');
+      setIsScheduled(false);
+      setScheduledDate('');
     }
   }, [isOpen, userId]);
 
@@ -5492,8 +5645,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   };
 
   const handleUpload = async (e) => {
-    e.preventDefault();
-    if (!audioFile || !title || !coverFile) return alert('Nombre, Audio y Caratula son obligatorios');
+    e.prisScheduled && !scheduledDate) return alert('Debes seleccionar una fecha y hora para la publicación programada');
     if (!userId) return alert('Sesion invalida. Cierra sesion y vuelve a entrar.');
 
     setLoading(true);
@@ -5509,12 +5661,16 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
     ));
     formData.append('audio', audioFile);
     formData.append('cover', coverFile);
+    formData.append('isScheduled', isScheduled);
+    if (isScheduled) {
+      formData.append('scheduledPublishAt', new Date(scheduledDate).toISOString());
+    }
 
     try {
       const res = await fetch(`${API_URL}/upload-song`, { method: 'POST', body: formData });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        alert('Hit publicado');
+        alert(data.message || 'Hit publicado');
         if (data.song) {
           onSongCreated(data.song);
         }
@@ -5530,6 +5686,10 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
         setGenre('otro');
         setAudioFile(null);
         setCoverFile(null);
+        setArtistId(userId);
+        setCollaborators([]);
+        setIsScheduled(false);
+        setScheduledDate(''
         setArtistId(userId);
         setCollaborators([]);
       } else {
@@ -5643,7 +5803,34 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
                         ))}
                       </div>
                     )}
-                  </div>
+                
+
+          <div className="border-t border-white/10 pt-4">
+            <label className="flex items-center gap-3 mb-3">
+              <input
+                type="checkbox"
+                checked={isScheduled}
+                onChange={(e) => setIsScheduled(e.target.checked)}
+                className="w-4 h-4 rounded accent-yellow-400 cursor-pointer"
+              />
+              <span className="text-sm font-bold text-white uppercase tracking-widest">Programar publicación</span>
+            </label>
+            {isScheduled && (
+              <div className="bg-black/30 border border-yellow-400/30 rounded-2xl p-4">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">
+                  Fecha y hora de publicación
+                </label>
+                <input
+                  type="datetime-local"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  min={new Date().toISOString().slice(0, 16)}
+                  className="w-full bg-black/40 p-3 rounded-xl border border-yellow-400/50 outline-none focus:border-yellow-400 text-white text-sm font-bold"
+                />
+                <p className="text-[10px] text-gray-400 mt-2">La canción se publicará automáticamente en la fecha y hora seleccionada</p>
+              </div>
+            )}
+          </div>  </div>
                   <button type="button" onClick={() => removeCollaborator(i)} className="p-2 mt-1 text-gray-500 hover:text-red-400 flex-shrink-0">
                     <X size={16} />
                   </button>

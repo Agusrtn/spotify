@@ -15,6 +15,11 @@ const SongSchema = new mongoose.Schema({
     name: { type: String, required: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
   }],
+  // Campos para programación de publicación
+  isScheduled: { type: Boolean, default: false },
+  scheduledPublishAt: { type: Date, default: null },
+  isPublished: { type: Boolean, default: true },
+  publishedAt: { type: Date, default: Date.now },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Song', SongSchema);
