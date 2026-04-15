@@ -5269,9 +5269,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
         setSelectedSongs([]);
         setPreviewGradient(getRandomAlbumGradient());
         setIsScheduled(false);
-        setScheduledDate(''
-        setSelectedSongs([]);
-        setPreviewGradient(getRandomAlbumGradient());
+        setScheduledDate('');
       }
     }
   }, [isOpen, albumToEdit, user]);
@@ -5300,6 +5298,8 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
       setSelectedSongs((prev) => [...prev, songId]);
     }
   };
+
+  const handleSave = async () => {
     if (isScheduled && !scheduledDate) return alert('Debes seleccionar una fecha y hora para la publicación programada');
 
     setLoading(true);
@@ -5320,10 +5320,6 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
       if (isScheduled) {
         formData.append('scheduledPublishAt', new Date(scheduledDate).toISOString());
       }
-      formData.append('coverUrl', coverUrl.trim());
-      formData.append('releaseYear', String(releaseYear));
-      formData.append('themeGradient', previewGradient);
-      formData.append('songIds', JSON.stringify(selectedSongs || []));
       if (coverFile) formData.append('cover', coverFile);
 
       const res = await fetch(endpoint, {
@@ -5645,7 +5641,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   };
 
   const handleUpload = async (e) => {
-    e.prisScheduled && !scheduledDate) return alert('Debes seleccionar una fecha y hora para la publicación programada');
+    if (isScheduled && !scheduledDate) return alert('Debes seleccionar una fecha y hora para la publicación programada');
     if (!userId) return alert('Sesion invalida. Cierra sesion y vuelve a entrar.');
 
     setLoading(true);
@@ -5689,9 +5685,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
         setArtistId(userId);
         setCollaborators([]);
         setIsScheduled(false);
-        setScheduledDate(''
-        setArtistId(userId);
-        setCollaborators([]);
+        setScheduledDate('');
       } else {
         alert(data.error || 'Error al subir el archivo');
       }
