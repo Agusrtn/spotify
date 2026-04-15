@@ -5348,7 +5348,7 @@ const AlbumCreateModal = ({ isOpen, onClose, user, members, allSongs, fetchAlbum
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-start md:items-center justify-center p-4 pb-28 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-start md:items-center justify-center pt-10 px-4 pb-28 overflow-y-auto">
       <form onSubmit={handleSave} className="bg-[#121212] border border-white/10 w-full max-w-2xl rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
         <h2 className="text-2xl md:text-3xl font-black italic mb-6 md:mb-8 uppercase tracking-tighter text-white">
           {isEditing ? <><span className="text-yellow-400">EDITAR</span> ÁLBUM</> : <>CREAR <span className="text-yellow-400">NUEVO ÁLBUM</span></>}
@@ -5698,7 +5698,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-start md:items-center justify-center p-4 pb-28 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-start md:items-center justify-center pt-10 px-4 pb-28 overflow-y-auto">
       <form onSubmit={handleUpload} className="bg-[#121212] border border-white/10 w-full max-w-lg rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
 <h2 className="text-2xl md:text-3xl font-black italic mb-5 md:mb-6 uppercase tracking-tighter text-white">
           SOLTAR <span className="text-yellow-400">NUEVO HIT</span>
