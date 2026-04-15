@@ -5747,25 +5747,6 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
               Sugerir género
             </button>
           </div>
-          <div>
-            <textarea value={lyrics} placeholder="LETRA (OPCIONAL) - TEXTO NORMAL O LRC [mm:ss.xx]" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-32" onChange={(e) => setLyrics(e.target.value)} />
-            <button
-              type="button"
-              onClick={handleConvertLyricsToLrc}
-              className="mt-3 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
-            >
-              Convertir a LRC
-            </button>
-            <button
-              type="button"
-              onClick={handleGenerateLrcWithAi}
-              disabled={lrcAiLoading}
-              className="mt-3 ml-2 px-4 py-2 rounded-xl bg-yellow-500/80 hover:bg-yellow-500 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
-            >
-              {lrcAiLoading ? 'Analizando...' : 'Generar LRC con IA'}
-            </button>
-            <p className="text-[10px] text-gray-500 mt-2">Si pegas LRC con timestamps, se mostrará sincronizable. Si pegas texto normal, se verá como letra común.</p>
-          </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -5806,7 +5787,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
             </div>
           </div>
 
-          <div className="border-t border-white/10 pt-4">
+          <div className="border-t border-white/10 pt-4 pb-4">
             <label className="flex items-center gap-3 mb-3">
               <input
                 type="checkbox"
@@ -5831,6 +5812,26 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
                 <p className="text-[10px] text-gray-400 mt-2">La canción se publicará automáticamente en la fecha y hora seleccionada</p>
               </div>
             )}
+          </div>
+
+          <div>
+            <textarea value={lyrics} placeholder="LETRA (OPCIONAL) - TEXTO NORMAL O LRC [mm:ss.xx]" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-32" onChange={(e) => setLyrics(e.target.value)} />
+            <button
+              type="button"
+              onClick={handleConvertLyricsToLrc}
+              className="mt-3 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+            >
+              Convertir a LRC
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateLrcWithAi}
+              disabled={lrcAiLoading}
+              className="mt-3 ml-2 px-4 py-2 rounded-xl bg-yellow-500/80 hover:bg-yellow-500 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
+            >
+              {lrcAiLoading ? 'Analizando...' : 'Generar LRC con IA'}
+            </button>
+            <p className="text-[10px] text-gray-500 mt-2">Si pegas LRC con timestamps, se mostrará sincronizable. Si pegas texto normal, se verá como letra común.</p>
           </div>
 
           <div className="flex gap-4 pt-4">
