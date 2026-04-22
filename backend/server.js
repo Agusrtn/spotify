@@ -722,6 +722,68 @@ cloudinary.config({
 });
 
 // Función para publicar automáticamente elementos programados
+const getCurrentMonday = () => {
+  const today = new Date();
+  const monday = new Date(today);
+  const diff = (today.getDay() + 6) % 7; // lunes = 0
+  monday.setDate(today.getDate() - diff);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+};
+
+const formatWeekLabel = (date) => {
+  return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const generateWeeklyTopPlaylist = async () => {
+  try {
+    const now = new Date();
+    const monday = getCurrentMonday();
+    const todayIsMonday = now.getDay() === 1;
+    if (!todayIsMonday) return;
+
+    const weekLabel = formatWeekLabel(monday);
+    const playlistName = `TOP SEMANAL - ${weekLabel}`;
+
+    const alreadyExists = await Playlist.findOne({ name: playlistName });
+    if (alreadyExists) return;
+
+    const adminUser = await User.findOne({ role: 'admin' }).sort({ createdAt: 1 });
+    if (!adminUser) {
+      console.warn('No admin found to create weekly top playlist');
+      return;
+    }
+
+    const topSongs = await Song.find({ isScheduled: false, isPublished: true })
+      .sort({ listenSeconds: -1, playCount: -1, createdAt: -1 })
+      .limit(15)
+      .select('_id coverUrl');
+
+    if (!topSongs.length) {
+      console.log('No hay canciones publicadas para generar el top semanal');
+      return;
+    }
+
+    const playlist = new Playlist({
+      name: playlistName,
+      description: `Las 15 canciones más escuchadas de la semana del ${weekLabel}`,
+      creator: adminUser._id,
+      songs: topSongs.map((song) => song._id),
+      coverUrl: topSongs[0]?.coverUrl || '',
+      isDefault: true,
+      isPublic: true,
+      isScheduled: false,
+      isPublished: true,
+      publishedAt: now,
+    });
+
+    await playlist.save();
+    console.log(`🎧 Playlist semanal creada: ${playlistName} con ${topSongs.length} canciones`);
+  } catch (error) {
+    console.error('❌ Error al generar top semanal:', error.message);
+  }
+};
+
 const publishScheduledContent = async () => {
   try {
     const now = new Date();
@@ -785,6 +847,8 @@ const publishScheduledContent = async () => {
     if (scheduledPlaylists.modifiedCount > 0) {
       console.log(`📝 ${scheduledPlaylists.modifiedCount} playlist(s) publicada(s) automáticamente`);
     }
+
+    await generateWeeklyTopPlaylist();
   } catch (error) {
     console.error('❌ Error al publicar contenido programado:', error.message);
   }
@@ -795,6 +859,11 @@ setInterval(publishScheduledContent, 60 * 1000);
 
 // Ejecutar una vez al iniciar
 publishScheduledContent();
+
+// Test endpoint
+app.get('/test', (req, res) => {
+  res.json({ message: 'Backend RTN funcionando correctamente', timestamp: new Date().toISOString() });
+});
 
 app.get('/health/upload-config', async (req, res) => {
   const hasName = Boolean(process.env.CLOUDINARY_NAME);
@@ -1377,7 +1446,13 @@ app.get('/songs', async (req, res) => {
       return res.status(400).json({ error: 'Falta ID de artista' });
     }
 
-    const songs = await Song.find({ artist: artistId })
+    const songs = await Song.find({
+      artist: artistId,
+      $or: [
+        { isScheduled: false },
+        { isScheduled: true, isPublished: true }
+      ]
+    })
       .populate('artist', 'username _id profilePic role')
       .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
@@ -1391,7 +1466,12 @@ app.get('/songs', async (req, res) => {
 
 app.get('/all-songs', async (req, res) => {
   try {
-    const songs = await Song.find()
+    const songs = await Song.find({
+      $or: [
+        { isScheduled: false },
+        { isScheduled: true, isPublished: true }
+      ]
+    })
       .populate('artist', 'username _id profilePic role')
       .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
@@ -1409,6 +1489,11 @@ app.post('/songs/:songId/play', async (req, res) => {
     const song = await Song.findById(songId);
     if (!song) {
       return res.status(404).json({ error: 'Canción no encontrada' });
+    }
+
+    // Verificar si la canción está programada y no publicada
+    if (song.isScheduled && !song.isPublished) {
+      return res.status(403).json({ error: 'Esta canción está programada para publicarse más tarde y no se puede reproducir aún' });
     }
 
     song.playCount = Number(song.playCount || 0) + 1;

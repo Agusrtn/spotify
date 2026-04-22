@@ -4508,7 +4508,10 @@ const SongRow = ({ song, onRowClick, onPlay, onArtistClick, onCollaboratorClick,
   </div>
 );
 
-const CrewSongCard = ({ song, onOpen, onPlay, onOpenArtist }) => (
+const CrewSongCard = ({ song, onOpen, onPlay, onOpenArtist }) => {
+  const isScheduledNotPublished = song.isScheduled && !song.isPublished;
+
+  return (
   <div
     className="group flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-3 py-2 hover:bg-white/10 transition-all cursor-pointer"
     onClick={onOpen}
@@ -4556,6 +4559,9 @@ const CrewSongCard = ({ song, onOpen, onPlay, onOpenArtist }) => (
             )}
           </span>
         ))}
+        {isScheduledNotPublished && (
+          <span className="text-[8px] text-orange-400 font-black uppercase tracking-widest ml-1">⏰ Programada</span>
+        )}
       </div>
     </div>
 
@@ -4563,15 +4569,27 @@ const CrewSongCard = ({ song, onOpen, onPlay, onOpenArtist }) => (
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        onPlay();
+        if (!isScheduledNotPublished) {
+          onPlay();
+        }
       }}
-      className="w-8 h-8 rounded-lg border border-white/15 bg-white/10 hover:bg-white/20 flex items-center justify-center"
-      aria-label={`Reproducir ${song.title}`}
+      disabled={isScheduledNotPublished}
+      className={`w-8 h-8 rounded-lg border flex items-center justify-center ${
+        isScheduledNotPublished
+          ? 'border-gray-600/30 bg-gray-600/20 cursor-not-allowed opacity-50'
+          : 'border-white/15 bg-white/10 hover:bg-white/20'
+      }`}
+      aria-label={isScheduledNotPublished ? `Canción programada para ${new Date(song.scheduledPublishAt).toLocaleDateString()}` : `Reproducir ${song.title}`}
     >
-      <Play fill="currentColor" size={12} className="ml-[1px]" />
+      {isScheduledNotPublished ? (
+        <Clock3 size={12} className="text-gray-500" />
+      ) : (
+        <Play fill="currentColor" size={12} className="ml-[1px]" />
+      )}
     </button>
   </div>
-);
+  );
+};
 
 const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelete, onOpenArtist, onShare, onAddToPlaylist }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -4766,9 +4784,31 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
 
         <div className="px-6 md:px-10 py-6 border-t border-white/10 bg-black/25">
           <div className="flex items-center gap-3 mb-8">
-            <button onClick={() => onPlay(song)} className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-400 text-black flex items-center justify-center transition">
-              <Play fill="black" size={22} className="ml-0.5" />
+            <button
+              onClick={() => onPlay(song)}
+              disabled={song.isScheduled && !song.isPublished}
+              className={`w-14 h-14 rounded-full text-black flex items-center justify-center transition ${
+                song.isScheduled && !song.isPublished
+                  ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                  : 'bg-green-500 hover:bg-green-400'
+              }`}
+            >
+              {song.isScheduled && !song.isPublished ? (
+                <Clock3 size={22} className="text-gray-300" />
+              ) : (
+                <Play fill="black" size={22} className="ml-0.5" />
+              )}
             </button>
+            {song.isScheduled && !song.isPublished && (
+              <div className="text-xs text-orange-400 font-bold uppercase tracking-widest">
+                Programada para {new Date(song.scheduledPublishAt).toLocaleDateString('es-ES', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </div>
+            )}
             <button onClick={() => onShare(song._id)} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
               <Share2 size={15} /> Compartir
             </button>
@@ -5061,10 +5101,19 @@ const PlaylistDetailPanel = ({ playlist, allSongs, onClose, onPlaySong, onOpenAr
               </div>
               <button
                 onClick={() => onPlaySong(song, index, playlist.songs || [])}
-                className="w-12 h-12 rounded-xl bg-white/15 hover:bg-white/25 border border-white/15 flex-shrink-0 flex items-center justify-center transition-all"
-                aria-label="Reproducir canción"
+                disabled={song.isScheduled && !song.isPublished}
+                className={`w-12 h-12 rounded-xl border flex-shrink-0 flex items-center justify-center transition-all ${
+                  song.isScheduled && !song.isPublished
+                    ? 'bg-gray-600/20 border-gray-600/30 cursor-not-allowed opacity-50'
+                    : 'bg-white/15 hover:bg-white/25 border-white/15'
+                }`}
+                aria-label={song.isScheduled && !song.isPublished ? "Canción programada" : "Reproducir canción"}
               >
-                <Play size={18} fill="white" className="text-white ml-[2px]" />
+                {song.isScheduled && !song.isPublished ? (
+                  <Clock3 size={18} className="text-gray-400" />
+                ) : (
+                  <Play size={18} fill="white" className="text-white ml-[2px]" />
+                )}
               </button>
             </div>
           )) : <p className="text-gray-500">Esta playlist no tiene canciones.</p>}
@@ -5212,10 +5261,19 @@ const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenAr
               </div>
               <button
                 onClick={() => onPlaySong(song, index, album.songs || [])}
-                className="w-12 h-12 rounded-xl bg-white/15 hover:bg-white/25 border border-white/15 flex-shrink-0 flex items-center justify-center transition-all"
-                aria-label="Reproducir canción"
+                disabled={song.isScheduled && !song.isPublished}
+                className={`w-12 h-12 rounded-xl border flex-shrink-0 flex items-center justify-center transition-all ${
+                  song.isScheduled && !song.isPublished
+                    ? 'bg-gray-600/20 border-gray-600/30 cursor-not-allowed opacity-50'
+                    : 'bg-white/15 hover:bg-white/25 border-white/15'
+                }`}
+                aria-label={song.isScheduled && !song.isPublished ? "Canción programada" : "Reproducir canción"}
               >
-                <Play size={18} fill="white" className="text-white ml-[2px]" />
+                {song.isScheduled && !song.isPublished ? (
+                  <Clock3 size={18} className="text-gray-400" />
+                ) : (
+                  <Play size={18} fill="white" className="text-white ml-[2px]" />
+                )}
               </button>
             </div>
           )) : <p className="text-white/60">Este álbum no tiene canciones.</p>}
