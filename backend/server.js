@@ -34,6 +34,7 @@ const IG_SCOPES = 'user_profile,user_media';
 const IG_SYNC_INTERVAL_MS = Number(process.env.IG_SYNC_INTERVAL_MS || 5 * 60 * 1000);
 const FRONTEND_APP_URL = (process.env.FRONTEND_APP_URL || '').replace(/\/$/, '');
 const FRONTEND_WEB_URL = (process.env.FRONTEND_URL || process.env.FRONTEND_APP_URL || '').replace(/\/$/, '');
+const TOP_WEEKLY_PLAYLIST_COVER_URL = process.env.TOP_WEEKLY_PLAYLIST_COVER_URL || '';
 const openaiClient = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 const LRC_WORD_NORMALIZE_REGEX = /[^a-z0-9\u00c0-\u024f]+/gi;
@@ -769,7 +770,7 @@ const generateWeeklyTopPlaylist = async () => {
       description: `Las 15 canciones más escuchadas de la semana del ${weekLabel}`,
       creator: adminUser._id,
       songs: topSongs.map((song) => song._id),
-      coverUrl: topSongs[0]?.coverUrl || '',
+      coverUrl: TOP_WEEKLY_PLAYLIST_COVER_URL || topSongs[0]?.coverUrl || '',
       isDefault: true,
       isPublic: true,
       isScheduled: false,
