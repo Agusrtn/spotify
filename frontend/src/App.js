@@ -391,6 +391,12 @@ function App() {
   // eslint-disable-next-line no-unused-vars
   const [albumSaving, setAlbumSaving] = useState(false);
 
+  // Top Weekly Covers
+  const [topWeeklyCovers, setTopWeeklyCovers] = useState([]);
+  const [topWeeklyCoversLoading, setTopWeeklyCoversLoading] = useState(false);
+  const [topWeeklyCoverFile, setTopWeeklyCoverFile] = useState(null);
+  const [topWeeklyCoverUploading, setTopWeeklyCoverUploading] = useState(false);
+
   const audioRef = useRef(null);
   const activeSongIdRef = useRef(null);
   const lastTrackedPositionRef = useRef(0);
@@ -882,6 +888,90 @@ function App() {
     }
   };
 
+  const fetchTopWeeklyCovers = async () => {
+    if (!user?._id || user.role !== 'admin') return;
+    setTopWeeklyCoversLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/top-weekly-covers?requesterId=${user._id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudieron cargar las imágenes', 'error');
+        return;
+      }
+      setTopWeeklyCovers(data.covers || []);
+    } catch (err) {
+      console.error('Error fetching top weekly covers:', err);
+      showToast('Error al cargar imágenes del top', 'error');
+    } finally {
+      setTopWeeklyCoversLoading(false);
+    }
+  };
+
+  const uploadTopWeeklyCover = async () => {
+    if (!user?._id || user.role !== 'admin' || !topWeeklyCoverFile) {
+      showToast('Necesitas seleccionar una imagen', 'error');
+      return;
+    }
+
+    setTopWeeklyCoverUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', topWeeklyCoverFile);
+      formData.append('requesterId', user._id);
+
+      const res = await fetch(`${API_URL}/admin/top-weekly-covers`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'Error al subir imagen', 'error');
+        return;
+      }
+
+      showToast('Imagen subida correctamente', 'success');
+      setTopWeeklyCoverFile(null);
+      await fetchTopWeeklyCovers();
+    } catch (err) {
+      console.error('Error uploading cover:', err);
+      showToast('Error al subir imagen', 'error');
+    } finally {
+      setTopWeeklyCoverUploading(false);
+    }
+  };
+
+  const deleteTopWeeklyCover = async (coverId) => {
+    if (!user?._id || user.role !== 'admin') return;
+
+    setConfirmDialog({
+      open: true,
+      title: 'Eliminar imagen',
+      message: '¿Estás seguro de que deseas eliminar esta imagen del top semanal?',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${API_URL}/admin/top-weekly-covers/${coverId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requesterId: user._id }),
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showToast(data.error || 'Error al eliminar imagen', 'error');
+            return;
+          }
+
+          showToast('Imagen eliminada', 'success');
+          await fetchTopWeeklyCovers();
+        } catch (err) {
+          console.error('Error deleting cover:', err);
+          showToast('Error al eliminar imagen', 'error');
+        }
+      },
+    });
+  };
+
   const registerSongPlay = async (songId) => {
     if (!songId) return;
     try {
@@ -1233,6 +1323,7 @@ function App() {
       fetchPlaylists();
       fetchAdminTopSongs();
       fetchScheduledContent();
+      fetchTopWeeklyCovers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, user]);
@@ -4052,6 +4143,72 @@ function App() {
             ) : (
               <p className="text-gray-500 text-sm">No hay contenido programado para publicar.</p>
             )}
+          </section>
+
+          <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">🎞️ Imágenes para Rotación (Top Semanal)</p>
+              <button onClick={fetchTopWeeklyCovers} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar</button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Upload Form */}
+              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Selecciona una imagen</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setTopWeeklyCoverFile(e.target.files?.[0] || null)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 outline-none focus:border-yellow-400 text-sm"
+                    />
+                    {topWeeklyCoverFile && (
+                      <p className="text-[10px] text-yellow-400">Archivo seleccionado: {topWeeklyCoverFile.name}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={uploadTopWeeklyCover}
+                    disabled={topWeeklyCoverUploading || !topWeeklyCoverFile}
+                    className="w-full bg-yellow-400 hover:bg-yellow-300 disabled:bg-gray-600 text-black font-black py-2 rounded-xl uppercase text-xs tracking-widest transition-all disabled:opacity-60"
+                  >
+                    {topWeeklyCoverUploading ? 'Subiendo...' : 'Subir Imagen'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Images List */}
+              {topWeeklyCoversLoading ? (
+                <p className="text-gray-500 text-sm">Cargando imágenes...</p>
+              ) : topWeeklyCovers.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {topWeeklyCovers.map((cover) => (
+                    <div key={cover._id} className="group relative bg-black/30 border border-white/10 rounded-xl overflow-hidden hover:border-yellow-400/40 transition-all">
+                      <div className="aspect-square overflow-hidden bg-black/60">
+                        <img 
+                          src={cover.imageUrl} 
+                          alt="Cover" 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        />
+                      </div>
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button
+                          onClick={() => deleteTopWeeklyCover(cover._id)}
+                          className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                      <div className="p-2">
+                        <p className="text-[10px] text-gray-400">#{cover.order}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">No hay imágenes subidas aún.</p>
+              )}
+            </div>
           </section>
 
           <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">

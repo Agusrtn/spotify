@@ -25,6 +25,7 @@ const Song = require('./models/Song');
 const Playlist = require('./models/Playlist');
 const Album = require('./models/Album');
 const Video = require('./models/Video');
+const TopWeeklyCover = require('./models/TopWeeklyCover');
 
 const IG_APP_ID = process.env.INSTAGRAM_APP_ID || '';
 const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || '';
@@ -3470,6 +3471,96 @@ app.delete('/songs/:songId/cancel-schedule', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al cancelar programación' });
+  }
+});
+
+// POST - Subir imagen para rotación del top semanal
+app.post('/admin/top-weekly-covers', (req, res) => {
+  upload.single('image')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(500).json({ error: `Error al subir imagen: ${uploadErr.message || 'fallo de Cloudinary'}` });
+    }
+
+    try {
+      const { requesterId } = req.body;
+      
+      if (!requesterId) {
+        return res.status(400).json({ error: 'requesterId es requerido' });
+      }
+
+      const requester = await User.findById(requesterId).select('_id role');
+      if (!requester || requester.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo admins pueden subir imágenes del top' });
+      }
+
+      if (!req.file?.path) {
+        return res.status(400).json({ error: 'No se proporcionó imagen' });
+      }
+
+      const maxOrder = await TopWeeklyCover.findOne().sort({ order: -1 }).select('order');
+      const nextOrder = (maxOrder?.order || 0) + 1;
+
+      const cover = new TopWeeklyCover({
+        imageUrl: req.file.path,
+        order: nextOrder,
+        isActive: true,
+      });
+
+      await cover.save();
+      return res.status(201).json({ message: 'Imagen subida', cover });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Error al subir imagen' });
+    }
+  });
+});
+
+// GET - Obtener imágenes del top semanal
+app.get('/admin/top-weekly-covers', async (req, res) => {
+  try {
+    const { requesterId } = req.query;
+    
+    if (!requesterId) {
+      return res.status(400).json({ error: 'requesterId es requerido' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden ver las imágenes del top' });
+    }
+
+    const covers = await TopWeeklyCover.find().sort({ order: 1 });
+    return res.json({ covers });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener imágenes' });
+  }
+});
+
+// DELETE - Eliminar imagen del top semanal
+app.delete('/admin/top-weekly-covers/:coverId', async (req, res) => {
+  try {
+    const { coverId } = req.params;
+    const { requesterId } = req.body;
+    
+    if (!requesterId) {
+      return res.status(400).json({ error: 'requesterId es requerido' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden eliminar imágenes del top' });
+    }
+
+    const cover = await TopWeeklyCover.findByIdAndDelete(coverId);
+    if (!cover) {
+      return res.status(404).json({ error: 'Imagen no encontrada' });
+    }
+
+    return res.json({ message: 'Imagen eliminada' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al eliminar imagen' });
   }
 });
 
