@@ -737,13 +737,15 @@ const formatWeekLabel = (date) => {
   return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const generateWeeklyTopPlaylist = async () => {
+const generateWeeklyTopPlaylist = async ({ force = false } = {}) => {
   try {
     const now = new Date();
     const monday = getCurrentMonday();
     const todayIsMonday = now.getDay() === 1;
-    if (!todayIsMonday) return;
+    if (!todayIsMonday && !force) return;
 
+    const nextMonday = new Date(monday);
+    nextMonday.setDate(monday.getDate() + 7);
     const weekLabel = formatWeekLabel(monday);
     const playlistName = `TOP SEMANAL - ${weekLabel}`;
 
@@ -756,10 +758,59 @@ const generateWeeklyTopPlaylist = async () => {
       return;
     }
 
-    const topSongs = await Song.find({ isScheduled: false, isPublished: true })
-      .sort({ listenSeconds: -1, playCount: -1, createdAt: -1 })
-      .limit(15)
-      .select('_id coverUrl');
+    const weeklyStats = await User.aggregate([
+      { $unwind: '$listeningHistory' },
+      {
+        $match: {
+          'listeningHistory.lastPlayedAt': { $gte: monday, $lt: nextMonday },
+          'listeningHistory.song': { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: '$listeningHistory.song',
+          playCountThisWeek: { $sum: 1 },
+          totalListenedSeconds: { $sum: '$listeningHistory.totalListenedSeconds' },
+          lastPlayedAt: { $max: '$listeningHistory.lastPlayedAt' }
+        }
+      },
+      {
+        $sort: {
+          playCountThisWeek: -1,
+          totalListenedSeconds: -1,
+          lastPlayedAt: -1
+        }
+      },
+      { $limit: 15 }
+    ]);
+
+    const orderedSongIds = weeklyStats.map((stat) => stat._id);
+    const weeklySongs = await Song.find({
+      _id: { $in: orderedSongIds },
+      isScheduled: false,
+      isPublished: true
+    })
+      .select('_id coverUrl createdAt')
+      .lean();
+
+    const weeklySongsById = new Map(weeklySongs.map((song) => [String(song._id), song]));
+    const topSongs = orderedSongIds
+      .map((songId) => weeklySongsById.get(String(songId)))
+      .filter(Boolean);
+
+    if (topSongs.length < 15) {
+      const fallbackSongs = await Song.find({
+        _id: { $nin: topSongs.map((song) => song._id) },
+        isScheduled: false,
+        isPublished: true
+      })
+        .sort({ listenSeconds: -1, playCount: -1, createdAt: -1 })
+        .limit(15 - topSongs.length)
+        .select('_id coverUrl')
+        .lean();
+
+      topSongs.push(...fallbackSongs);
+    }
 
     if (!topSongs.length) {
       console.log('No hay canciones publicadas para generar el top semanal');
@@ -3639,6 +3690,26 @@ app.delete('/admin/top-weekly-covers/:coverId', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al eliminar imagen' });
+  }
+});
+
+app.post('/admin/regenerate-weekly-top', async (req, res) => {
+  try {
+    const { requesterId } = req.body;
+    if (!requesterId) {
+      return res.status(400).json({ error: 'requesterId es requerido' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden regenerar el top semanal' });
+    }
+
+    await generateWeeklyTopPlaylist({ force: true });
+    return res.json({ message: 'Regeneración del top semanal ejecutada' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al regenerar el top semanal' });
   }
 });
 
