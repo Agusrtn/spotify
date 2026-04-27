@@ -907,6 +907,44 @@ function App() {
     }
   };
 
+  const fetchSongsDebug = async () => {
+    if (!user?._id || user.role !== 'admin') return;
+    try {
+      const res = await fetch(`${API_URL}/admin/all-songs-debug?requesterId=${user._id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'Error al obtener debug', 'error');
+        return;
+      }
+      console.log('📊 Debug de canciones:', data.stats);
+      showToast(`Total: ${data.stats.total}, Publicadas: ${data.stats.published}, Programadas no pub: ${data.stats.scheduledNotPublished}`, 'info');
+    } catch (err) {
+      console.error('Error fetching songs debug:', err);
+      showToast('Error al obtener debug de canciones', 'error');
+    }
+  };
+
+  const publishExpiredScheduled = async () => {
+    if (!user?._id || user.role !== 'admin') return;
+    try {
+      const res = await fetch(`${API_URL}/admin/publish-expired-scheduled`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'Error al publicar canciones vencidas', 'error');
+        return;
+      }
+      showToast(data.message, 'success');
+      await fetchAllSongs(); // Recargar la lista
+    } catch (err) {
+      console.error('Error publishing expired scheduled:', err);
+      showToast('Error al publicar canciones vencidas', 'error');
+    }
+  };
+
   const uploadTopWeeklyCover = async () => {
     if (!user?._id || user.role !== 'admin' || !topWeeklyCoverFile) {
       showToast('Necesitas seleccionar una imagen', 'error');
@@ -4148,7 +4186,11 @@ function App() {
           <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
             <div className="flex items-center justify-between mb-6">
               <p className="text-xs font-black text-gray-500 uppercase tracking-widest">🎞️ Imágenes para Rotación (Top Semanal)</p>
-              <button onClick={fetchTopWeeklyCovers} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar</button>
+              <div className="flex gap-2">
+                <button onClick={publishExpiredScheduled} className="text-red-400 text-xs font-bold hover:underline">Publicar Vencidas</button>
+                <button onClick={fetchSongsDebug} className="text-yellow-400 text-xs font-bold hover:underline">Debug Canciones</button>
+                <button onClick={fetchTopWeeklyCovers} className="text-yellow-400 text-xs font-bold hover:underline">Refrescar</button>
+              </div>
             </div>
 
             <div className="space-y-6">

@@ -1471,7 +1471,8 @@ app.get('/all-songs', async (req, res) => {
     const songs = await Song.find({
       $or: [
         { isScheduled: false },
-        { isScheduled: true, isPublished: true }
+        { isPublished: true },
+        { isPublished: { $exists: false } }
       ]
     })
       .populate('artist', 'username _id profilePic role')
@@ -1482,6 +1483,83 @@ app.get('/all-songs', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener canciones' });
+  }
+});
+
+// Ruta temporal para debug - obtener TODAS las canciones sin filtro
+app.get('/admin/all-songs-debug', async (req, res) => {
+  try {
+    const { requesterId } = req.query;
+    
+    if (!requesterId) {
+      return res.status(400).json({ error: 'requesterId es requerido' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden usar debug' });
+    }
+
+    const allSongs = await Song.find({})
+      .populate('artist', 'username _id profilePic role')
+      .populate('collaborators.userId', 'username _id')
+      .sort({ createdAt: -1 });
+
+    const stats = {
+      total: allSongs.length,
+      published: allSongs.filter(s => s.isPublished === true).length,
+      scheduled: allSongs.filter(s => s.isScheduled === true).length,
+      scheduledNotPublished: allSongs.filter(s => s.isScheduled === true && s.isPublished === false).length,
+      notScheduled: allSongs.filter(s => s.isScheduled === false).length,
+      legacyNoPublishedField: allSongs.filter(s => s.isPublished === undefined).length,
+    };
+
+    return res.json({ songs: allSongs, stats });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener debug de canciones' });
+  }
+});
+
+// Ruta para publicar manualmente canciones programadas vencidas
+app.post('/admin/publish-expired-scheduled', async (req, res) => {
+  try {
+    const { requesterId } = req.body;
+    
+    if (!requesterId) {
+      return res.status(400).json({ error: 'requesterId es requerido' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester || requester.role !== 'admin') {
+      return res.status(403).json({ error: 'Solo admins pueden publicar manualmente' });
+    }
+
+    const now = new Date();
+    
+    // Publicar canciones programadas vencidas
+    const result = await Song.updateMany(
+      {
+        isScheduled: true,
+        isPublished: false,
+        scheduledPublishAt: { $lte: now }
+      },
+      {
+        $set: {
+          isScheduled: false,
+          isPublished: true,
+          publishedAt: now
+        }
+      }
+    );
+
+    return res.json({ 
+      message: `Se publicaron ${result.modifiedCount} canciones programadas vencidas`,
+      modifiedCount: result.modifiedCount 
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al publicar canciones vencidas' });
   }
 });
 
