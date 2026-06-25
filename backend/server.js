@@ -393,22 +393,26 @@ const renderSharePreviewHtml = ({ title, description, imageUrl, canonicalUrl, re
     ${safeImage ? `<meta name="twitter:image" content="${safeImage}" />` : ''}
     ${safeRedirect ? `<meta http-equiv="refresh" content="0;url=${safeRedirect}" />` : ''}
     <style>
-      body { margin: 0; background: #080808; color: #fff; font-family: Segoe UI, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; }
-      .card { width: min(92vw, 480px); border: 1px solid #222; border-radius: 18px; overflow: hidden; background: #111; }
-      .cover { aspect-ratio: 1.8 / 1; background: #222 center/cover no-repeat; }
-      .content { padding: 16px; }
-      .title { font-size: 20px; font-weight: 800; margin: 0 0 8px; }
-      .desc { color: #aaa; margin: 0 0 14px; }
-      .btn { display: inline-block; text-decoration: none; color: #080808; background: #facc15; font-weight: 700; padding: 10px 14px; border-radius: 10px; }
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+      body { margin: 0; background: radial-gradient(circle at top, #1a1408 0%, #080808 45%, #000 100%); color: #fff; font-family: Inter, Segoe UI, Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; padding: 24px; }
+      .card { width: min(92vw, 520px); border: 1px solid rgba(250,204,21,0.15); border-radius: 28px; overflow: hidden; background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.6) 100%); box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset; }
+      .cover { aspect-ratio: 1 / 1; background: #111 center/cover no-repeat; position: relative; }
+      .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.85) 100%); }
+      .badge { display: inline-block; margin: 16px 16px 0; padding: 6px 10px; border-radius: 999px; background: rgba(250,204,21,0.12); color: #facc15; font-size: 11px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; }
+      .content { padding: 18px 18px 22px; }
+      .title { font-size: clamp(22px, 4vw, 28px); font-weight: 900; margin: 8px 0 10px; line-height: 1.1; }
+      .desc { color: #b3b3b3; margin: 0 0 18px; line-height: 1.5; }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: #080808; background: linear-gradient(135deg, #fde047, #facc15); font-weight: 800; padding: 12px 18px; border-radius: 14px; box-shadow: 0 10px 30px rgba(250,204,21,0.25); }
     </style>
   </head>
   <body>
     <div class="card">
       <div class="cover" style="background-image: url('${safeImage}');"></div>
       <div class="content">
+        <span class="badge">RTN Music</span>
         <p class="title">${safeTitle}</p>
         <p class="desc">${safeDescription}</p>
-        ${safeRedirect ? `<a class="btn" href="${safeRedirect}">Abrir en RTN Music</a>` : ''}
+        ${safeRedirect ? `<a class="btn" href="${safeRedirect}">▶ Escuchar ahora</a>` : ''}
       </div>
     </div>
     ${safeRedirect ? `<script>window.location.replace(${JSON.stringify(redirectUrl)});</script>` : ''}
@@ -2321,7 +2325,7 @@ app.get('/discovery-feed', async (req, res) => {
 app.get('/artists/:artistId', async (req, res) => {
   try {
     const { artistId } = req.params;
-    const artist = await User.findById(artistId).select('_id username role bio profilePic instagramLinked instagramHandle instagramPosts instagramFeed instagramLastSyncedAt instagramAccessToken');
+    const artist = await User.findById(artistId).select('_id username role bio profilePic instagramLinked instagramHandle instagramPosts instagramFeed instagramLastSyncedAt instagramAccessToken tourDates');
 
     if (!artist) {
       return res.status(404).json({ error: 'Artista no encontrado' });
@@ -2332,6 +2336,14 @@ app.get('/artists/:artistId', async (req, res) => {
     }
 
     const songs = await Song.find({ artist: artistId })
+      .populate('artist', 'username _id profilePic bio')
+      .populate('collaborators.userId', 'username _id')
+      .sort({ createdAt: -1 });
+
+    const collaborations = await Song.find({
+      artist: { $ne: artistId },
+      'collaborators.userId': artistId,
+    })
       .populate('artist', 'username _id profilePic bio')
       .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
@@ -2359,9 +2371,15 @@ app.get('/artists/:artistId', async (req, res) => {
       instagramPosts: artist.instagramPosts || [],
       instagramFeed: artist.instagramFeed || [],
       instagramLastSyncedAt: artist.instagramLastSyncedAt || null,
+      tourDates: (artist.tourDates || []).map((item) => ({
+        city: item.city || '',
+        venue: item.venue || '',
+        date: item.date || null,
+        ticketUrl: item.ticketUrl || '',
+      })),
     };
 
-    return res.json({ artist: artistSafe, songs, albums });
+    return res.json({ artist: artistSafe, songs, albums, collaborations });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener perfil del artista' });
@@ -2398,6 +2416,77 @@ app.get('/artists/:artistId/stats', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener estadísticas del artista' });
+  }
+});
+
+app.get('/users/:userId/tour-dates', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select('tourDates username');
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const tourDates = (user.tourDates || [])
+      .filter((item) => item?.city && item?.date)
+      .map((item) => ({
+        city: item.city,
+        venue: item.venue || '',
+        date: item.date,
+        ticketUrl: item.ticketUrl || '',
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    return res.json({ tourDates, username: user.username });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener fechas de tour' });
+  }
+});
+
+app.put('/users/:userId/tour-dates', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { requesterId, tourDates } = req.body || {};
+
+    if (!requesterId) {
+      return res.status(400).json({ error: 'Falta requesterId' });
+    }
+
+    const requester = await User.findById(requesterId).select('_id role');
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester no encontrado' });
+    }
+
+    if (String(requester._id) !== String(userId) && requester.role !== 'admin') {
+      return res.status(403).json({ error: 'No tienes permiso para editar estas fechas' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const cleaned = Array.isArray(tourDates)
+      ? tourDates
+        .filter((item) => item?.city && item?.date)
+        .map((item) => ({
+          city: String(item.city).trim(),
+          venue: String(item.venue || '').trim(),
+          date: new Date(item.date),
+          ticketUrl: String(item.ticketUrl || '').trim(),
+        }))
+      : [];
+
+    user.tourDates = cleaned;
+    await user.save();
+
+    return res.json({
+      tourDates: user.tourDates,
+      message: 'Fechas de tour actualizadas',
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al guardar fechas de tour' });
   }
 });
 

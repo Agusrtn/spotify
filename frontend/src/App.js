@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import NowPlayingView from './components/NowPlayingView';
+import ShareModal from './components/ShareModal';
+import TourDatesPanel from './components/TourDatesPanel';
 import { API_URL } from './config';
 import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -302,6 +305,11 @@ function App() {
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false);
   const [albumToEdit, setAlbumToEdit] = useState(null);
   const [activeArtistTab, setActiveArtistTab] = useState('info');
+  const [showNowPlaying, setShowNowPlaying] = useState(false);
+  const [shareModal, setShareModal] = useState({ open: false, type: 'song', item: null, label: '' });
+  const [myCollaborations, setMyCollaborations] = useState([]);
+  const [userTourDates, setUserTourDates] = useState([]);
+  const [tourDatesSaving, setTourDatesSaving] = useState(false);
 
   const [allSongs, setAllSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
@@ -1099,6 +1107,17 @@ function App() {
   };
 
   const shareLink = async (type, itemId, label) => {
+    const item = type === 'song'
+      ? allSongs.find((song) => String(song._id) === String(itemId)) || selectedSong
+      : type === 'album'
+        ? albums.find((album) => String(album._id) === String(itemId)) || selectedAlbum
+        : [...playlists, ...userPlaylists].find((playlist) => String(playlist._id) === String(itemId)) || selectedPlaylist;
+
+    if (item) {
+      setShareModal({ open: true, type, item, label });
+      return;
+    }
+
     try {
       const url = `${API_URL}/share/${type}/${itemId}?app=${encodeURIComponent(window.location.origin)}`;
       if (navigator.share) {
@@ -1112,6 +1131,11 @@ function App() {
       console.error(err);
       showToast('No se pudo copiar el enlace', 'error');
     }
+  };
+
+  const openShareModal = (type, item, label) => {
+    if (!item) return;
+    setShareModal({ open: true, type, item, label });
   };
 
   useEffect(() => {
@@ -1415,6 +1439,29 @@ function App() {
   }, [view, artistProfile]);
 
   useEffect(() => {
+    if (view !== 'perfil' || !user?._id) return;
+
+    const loadProfileExtras = async () => {
+      try {
+        const [artistRes, tourRes] = await Promise.all([
+          fetch(`${API_URL}/artists/${user._id}`),
+          fetch(`${API_URL}/users/${user._id}/tour-dates`),
+        ]);
+        const artistData = await artistRes.json().catch(() => ({}));
+        const tourData = await tourRes.json().catch(() => ({}));
+        if (artistRes.ok) {
+          setMyCollaborations(Array.isArray(artistData.collaborations) ? artistData.collaborations.map(normalizeSongEntity) : []);
+        }
+        if (tourRes.ok) setUserTourDates(tourData.tourDates || []);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    loadProfileExtras();
+  }, [view, user?._id]);
+
+  useEffect(() => {
     if (isModalOpen && user?.role === 'admin') {
       fetchMembers();
     }
@@ -1588,6 +1635,50 @@ function App() {
     }
   };
 
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentSong) return undefined;
+
+    const artistName = [
+      currentSong.artist?.username,
+      ...(currentSong.collaborators || []).map((c) => c?.userId?.username || c?.name),
+    ].filter(Boolean).join(', ') || 'RTN Music';
+
+    const artwork = currentSong.coverUrl
+      ? [
+        { src: currentSong.coverUrl, sizes: '512x512', type: 'image/jpeg' },
+        { src: currentSong.coverUrl, sizes: '256x256', type: 'image/jpeg' },
+        { src: currentSong.coverUrl, sizes: '128x128', type: 'image/jpeg' },
+      ]
+      : [];
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentSong.title || 'RTN Music',
+      artist: artistName,
+      album: 'RTN Music',
+      artwork,
+    });
+
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handlePrevious = () => prevSong();
+    const handleNext = () => nextSong();
+
+    navigator.mediaSession.setActionHandler('play', handlePlay);
+    navigator.mediaSession.setActionHandler('pause', handlePause);
+    navigator.mediaSession.setActionHandler('previoustrack', handlePrevious);
+    navigator.mediaSession.setActionHandler('nexttrack', handleNext);
+
+    return () => {
+      ['play', 'pause', 'previoustrack', 'nexttrack'].forEach((action) => {
+        try {
+          navigator.mediaSession.setActionHandler(action, null);
+        } catch (_) {}
+      });
+    };
+  }, [currentSong, isPlaying, playQueue, queueIndex, playMode, allSongs]);
+
   const openSongDetail = (song) => setSelectedSong(song);
 
   const openArtistProfile = async (artistId) => {
@@ -1600,6 +1691,7 @@ function App() {
         artist: normalizeArtistEntity(data.artist),
         songs: Array.isArray(data.songs) ? data.songs.map(normalizeSongEntity) : [],
         albums: Array.isArray(data.albums) ? data.albums.map(normalizeAlbumEntity) : [],
+        collaborations: Array.isArray(data.collaborations) ? data.collaborations.map(normalizeSongEntity) : [],
       });
       setActiveArtistTab('info');
       setView('artist');
@@ -1658,6 +1750,65 @@ function App() {
       console.error(err);
     } finally {
       setSearchLoading(false);
+    }
+  };
+
+  const browseSearchResults = useMemo(() => {
+    if (searchQuery.trim().length >= 2) return searchResults;
+
+    let songs = [...allSongs];
+    if (searchGenre !== 'all') {
+      songs = songs.filter((song) => song.genre === searchGenre);
+    }
+    if (searchSort === 'popular') {
+      songs = songs.sort((a, b) => Number(b.listenSeconds || b.playCount || 0) - Number(a.listenSeconds || a.playCount || 0));
+    } else {
+      songs = songs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+
+    const artistMap = new Map();
+    allSongs.forEach((song) => {
+      if (song.artist?._id && !artistMap.has(String(song.artist._id))) {
+        artistMap.set(String(song.artist._id), song.artist);
+      }
+    });
+    const artists = [...artistMap.values()].sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
+
+    let filteredAlbums = [...albums].sort((a, b) => new Date(b.releaseDate || b.createdAt || 0) - new Date(a.releaseDate || a.createdAt || 0));
+
+    if (searchType === 'songs') return { songs, artists: [], albums: [] };
+    if (searchType === 'artists') return { songs: [], artists, albums: [] };
+    if (searchType === 'albums') return { songs: [], artists: [], albums: filteredAlbums };
+    return { songs, artists, albums: filteredAlbums };
+  }, [searchQuery, searchResults, allSongs, albums, searchGenre, searchSort, searchType]);
+
+  const saveTourDates = async (tourDates) => {
+    setTourDatesSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/users/${user._id}/tour-dates`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, tourDates }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudieron guardar las fechas', 'error');
+        return;
+      }
+      setUserTourDates(data.tourDates || []);
+      setUser((prev) => ({ ...prev, tourDates: data.tourDates || [] }));
+      if (artistProfile?.artist?._id === user._id) {
+        setArtistProfile((prev) => prev ? ({
+          ...prev,
+          artist: { ...prev.artist, tourDates: data.tourDates || [] },
+        }) : prev);
+      }
+      showToast('Fechas de tour guardadas', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al guardar fechas', 'error');
+    } finally {
+      setTourDatesSaving(false);
     }
   };
 
@@ -2355,6 +2506,7 @@ function App() {
       onOpenArtist={openArtistProfile}
       unreadNotifications={unreadNotifications}
       onToggleNotifications={() => setIsNotificationsOpen((prev) => !prev)}
+      onOpenNowPlaying={() => setShowNowPlaying(true)}
     >
       {view === 'inicio' && (
         <div className="animate-in fade-in duration-700">
@@ -2891,6 +3043,12 @@ function App() {
             onChange={(e) => handleSearch(e.target.value)}
           />
 
+          {searchQuery.trim().length < 2 && (
+            <p className="text-sm text-gray-400 mb-6">
+              Mostrando todo el catálogo de RTN. Escribe al menos 2 letras para filtrar.
+            </p>
+          )}
+
           <div className="flex flex-col md:flex-row gap-3 mb-8">
             <select
               value={searchType}
@@ -2932,8 +3090,8 @@ function App() {
             <section>
               <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-5">Canciones</h3>
               <div className="space-y-3">
-                {searchResults.songs?.length ? (
-                  searchResults.songs.map((song) => {
+                {browseSearchResults.songs?.length ? (
+                  browseSearchResults.songs.map((song) => {
                     const idx = allSongs.findIndex((item) => item._id === song._id);
                     return (
                       <SongRow
@@ -2955,7 +3113,7 @@ function App() {
                     );
                   })
                 ) : (
-                  <p className="text-gray-500 text-sm">No se encontraron canciones.</p>
+                  <p className="text-gray-500 text-sm">{searchQuery.trim().length >= 2 ? 'No se encontraron canciones.' : 'No hay canciones publicadas aún.'}</p>
                 )}
               </div>
             </section>
@@ -2963,8 +3121,8 @@ function App() {
             <section>
               <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-5">Artistas</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                {searchResults.artists?.length ? (
-                  searchResults.artists.map((artist) => (
+                {browseSearchResults.artists?.length ? (
+                  browseSearchResults.artists.map((artist) => (
                     <button
                       key={artist._id}
                       onClick={() => openArtistProfile(artist._id)}
@@ -2978,7 +3136,7 @@ function App() {
                     </button>
                   ))
                 ) : (
-                  <p className="text-gray-500 text-sm col-span-full">No se encontraron artistas.</p>
+                  <p className="text-gray-500 text-sm col-span-full">{searchQuery.trim().length >= 2 ? 'No se encontraron artistas.' : 'No hay artistas en el catálogo.'}</p>
                 )}
               </div>
             </section>
@@ -2986,8 +3144,8 @@ function App() {
             <section>
               <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-5">Álbumes</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {searchResults.albums?.length ? (
-                  searchResults.albums.map((album) => (
+                {browseSearchResults.albums?.length ? (
+                  browseSearchResults.albums.map((album) => (
                     <button
                       key={album._id}
                       onClick={() => setSelectedAlbum(album)}
@@ -3008,7 +3166,7 @@ function App() {
                     </button>
                   ))
                 ) : (
-                  <p className="text-gray-500 text-sm">No se encontraron álbumes.</p>
+                  <p className="text-gray-500 text-sm">{searchQuery.trim().length >= 2 ? 'No se encontraron álbumes.' : 'No hay álbumes publicados aún.'}</p>
                 )}
               </div>
             </section>
@@ -3463,6 +3621,12 @@ function App() {
                 Playlists
               </button>
               <button
+                onClick={() => setActiveArtistTab('colaboraciones')}
+                className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeArtistTab === 'colaboraciones' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                Colaboraciones
+              </button>
+              <button
                 onClick={() => setIsAlbumModalOpen(true)}
                 className="ml-auto px-4 md:px-6 py-3 text-yellow-400 text-xl font-black hover:bg-yellow-400/10 rounded-xl transition-all"
                 title="Crear nuevo álbum"
@@ -3493,6 +3657,49 @@ function App() {
                   </div>
                 </div>
               )}
+              {(user.role === 'artist' || user.role === 'admin') && (
+                <div className="mt-6">
+                  <TourDatesPanel
+                    tourDates={userTourDates}
+                    editable
+                    saving={tourDatesSaving}
+                    onSave={saveTourDates}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeArtistTab === 'colaboraciones' && (user.role === 'artist' || user.role === 'admin') && (
+            <div className="mt-8 bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-6">Canciones en las que colaboraste</p>
+              <div className="space-y-3">
+                {myCollaborations?.length > 0 ? (
+                  myCollaborations.map((song) => {
+                    const idx = allSongs.findIndex((item) => item._id === song._id);
+                    return (
+                      <SongRow
+                        key={song._id}
+                        song={song}
+                        onRowClick={() => openSongDetail(song)}
+                        onPlay={(e) => {
+                          e.stopPropagation();
+                          playSong(song, idx >= 0 ? idx : 0);
+                        }}
+                        onArtistClick={(e) => {
+                          e.stopPropagation();
+                          if (song.artist?._id) openArtistProfile(song.artist._id);
+                        }}
+                        onCollaboratorClick={(id) => openArtistProfile(id)}
+                        onToggleLike={(songId) => toggleFavorite('song', songId)}
+                        isLiked={likedSongSet.has(String(song._id))}
+                      />
+                    );
+                  })
+                ) : (
+                  <p className="text-gray-500 text-sm">Aún no apareces como colaborador en ninguna canción.</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -3712,6 +3919,16 @@ function App() {
             >
               Álbumes
             </button>
+            <button
+              onClick={() => setActiveArtistTab('colaboraciones')}
+              className={`px-4 md:px-6 py-3 text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                activeArtistTab === 'colaboraciones'
+                  ? 'text-yellow-400 border-b-2 border-yellow-400'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Colaboraciones
+            </button>
             {String(user._id) === String(artistProfile.artist._id) && (user.role === 'artist' || user.role === 'admin') && (
               <button
                 onClick={() => setIsAlbumModalOpen(true)}
@@ -3819,6 +4036,47 @@ function App() {
                   </div>
                 </>
               )}
+              <div className="mt-6">
+                <TourDatesPanel
+                  tourDates={artistProfile.artist.tourDates || []}
+                  editable={String(user._id) === String(artistProfile.artist._id)}
+                  saving={tourDatesSaving}
+                  onSave={saveTourDates}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeArtistTab === 'colaboraciones' && (
+            <div className="bg-white/5 p-5 md:p-8 rounded-[40px] border border-white/5">
+              <p className="text-xs font-black text-gray-500 uppercase mb-6 tracking-widest">Colaboraciones</p>
+              <div className="space-y-3">
+                {artistProfile.collaborations?.length > 0 ? (
+                  artistProfile.collaborations.map((song) => {
+                    const idx = allSongs.findIndex((item) => item._id === song._id);
+                    return (
+                      <SongRow
+                        key={song._id}
+                        song={song}
+                        onRowClick={() => openSongDetail(song)}
+                        onPlay={(e) => {
+                          e.stopPropagation();
+                          playSong(song, idx >= 0 ? idx : 0);
+                        }}
+                        onArtistClick={(e) => {
+                          e.stopPropagation();
+                          if (song.artist?._id) openArtistProfile(song.artist._id);
+                        }}
+                        onCollaboratorClick={(id) => openArtistProfile(id)}
+                        onToggleLike={(songId) => toggleFavorite('song', songId)}
+                        isLiked={likedSongSet.has(String(song._id))}
+                      />
+                    );
+                  })
+                ) : (
+                  <p className="text-gray-500 text-sm">Este artista no tiene colaboraciones publicadas.</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -4579,7 +4837,7 @@ function App() {
         onSave={handleSaveSongChanges}
         onDelete={handleDeleteSong}
         onOpenArtist={openArtistProfile}
-        onShare={(songId) => shareLink('song', songId, 'la canción')}
+        onShare={(song) => openShareModal('song', song, 'esta canción')}
         onAddToPlaylist={(song) => setSongToAddPlaylist(song)}
       />
 
@@ -4623,7 +4881,7 @@ function App() {
           playSong(playableSong, safeIndex, { queue: normalizedAlbumSongs, mode: 'album' });
         }}
         onOpenArtist={openArtistProfile}
-        onShare={(albumId) => shareLink('album', albumId, 'el álbum')}
+        onShare={(album) => openShareModal('album', album, 'este álbum')}
         isLiked={likedAlbumSet.has(String(selectedAlbum?._id || ''))}
         onToggleLike={(albumId) => toggleFavorite('album', albumId)}
         onEdit={(album) => {
@@ -4648,6 +4906,33 @@ function App() {
             }
           } catch { alert('Error al conectar'); }
         }}
+      />
+
+      <NowPlayingView
+        open={showNowPlaying}
+        onClose={() => setShowNowPlaying(false)}
+        currentSong={currentSong}
+        isPlaying={isPlaying}
+        togglePlay={togglePlay}
+        nextSong={nextSong}
+        prevSong={prevSong}
+        volume={volume}
+        setVolume={setVolume}
+        currentTime={currentTime}
+        duration={duration}
+        audioRef={audioRef}
+        onOpenArtist={openArtistProfile}
+        onShare={(song) => openShareModal('song', song, 'esta canción')}
+        onToggleLike={(songId) => toggleFavorite('song', songId)}
+        isLiked={likedSongSet.has(String(currentSong?._id || ''))}
+      />
+
+      <ShareModal
+        open={shareModal.open}
+        onClose={() => setShareModal({ open: false, type: 'song', item: null, label: '' })}
+        type={shareModal.type}
+        item={shareModal.item}
+        label={shareModal.label}
       />
     </Layout>
   );
@@ -5029,7 +5314,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
                 })}
               </div>
             )}
-            <button onClick={() => onShare(song._id)} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
+            <button onClick={() => onShare(song)} className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-yellow-400/20 to-white/10 border border-yellow-400/30 hover:border-yellow-300 text-sm font-black uppercase tracking-wide flex items-center gap-2 transition-all">
               <Share2 size={15} /> Compartir
             </button>
             <button onClick={() => onAddToPlaylist(song)} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold uppercase tracking-wide flex items-center gap-2">
@@ -5413,8 +5698,8 @@ const AlbumDetailPanel = ({ album, onClose, user, allSongs, onPlaySong, onOpenAr
             {isOwner && (
               <div className="flex gap-3 mt-4">
                 <button
-                  onClick={() => onShare(album._id)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-widest transition-all"
+                  onClick={() => onShare(album)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-yellow-400/20 to-white/10 border border-yellow-400/30 hover:border-yellow-300 text-white text-xs font-black uppercase tracking-widest transition-all"
                 >
                   <Share2 size={14} /> Compartir
                 </button>

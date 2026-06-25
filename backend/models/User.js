@@ -75,6 +75,13 @@ const UserSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Playlist'
     }],
+    tourDates: [{
+        city: { type: String, default: '' },
+        venue: { type: String, default: '' },
+        date: { type: Date, default: null },
+        ticketUrl: { type: String, default: '' },
+    }],
+
     listeningHistory: [{
         song: {
             type: mongoose.Schema.Types.ObjectId,

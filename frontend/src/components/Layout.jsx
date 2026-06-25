@@ -66,7 +66,8 @@ const Layout = ({
   onSongEnd,
   onOpenArtist,
   unreadNotifications,
-  onToggleNotifications
+  onToggleNotifications,
+  onOpenNowPlaying,
 }) => {
   const [showLyrics, setShowLyrics] = useState(false);
 
@@ -205,7 +206,7 @@ const Layout = ({
         </div>
 
         <header className="sticky top-0 flex items-center justify-between px-4 md:px-10 py-4 md:py-6 bg-black/10 backdrop-blur-md border-b border-white/5" style={{ zIndex: 10 }}>
-          <div className="text-gray-500 font-black tracking-[0.3em] text-[10px] uppercase">RTN Engine / 2.0.26</div>
+          <div className="text-gray-500 font-black tracking-[0.3em] text-[10px] uppercase">RTN Engine / 3.0</div>
           
           <div className="flex items-center gap-4">
             <button
@@ -255,45 +256,33 @@ const Layout = ({
         />
 
         <div className="flex items-center gap-5 w-1/3 min-w-0">
-          <div className="w-14 h-14 bg-yellow-400 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-400/20 flex-shrink-0 overflow-hidden">
-            {currentSong?.coverUrl ? (
-              <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
-            ) : (
-              <Mic2 className="text-black" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <h4 className="text-sm font-black text-white tracking-wide truncate">{currentSong?.title || 'FLOW RTN'}</h4>
-            <div className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate">
-              <button
-                type="button"
-                onClick={() => currentSong?.artist?._id && onOpenArtist(currentSong.artist._id)}
-                className="inline hover:text-yellow-300"
-              >
-                {currentSong?.artist?.username || 'System Radio'}
-              </button>
-              {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
-                const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
-                const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
-                return (
-                  <span key={`player-collab-desktop-${collaboratorIndex}`}>
-                    {', '}
-                    {collaboratorId ? (
-                      <button
-                        type="button"
-                        onClick={() => onOpenArtist(collaboratorId)}
-                        className="inline text-white/75 hover:text-yellow-300"
-                      >
-                        {collaboratorName}
-                      </button>
-                    ) : (
-                      <span className="text-white/75">{collaboratorName}</span>
-                    )}
-                  </span>
-                );
-              })}
+          <button
+            type="button"
+            onClick={() => currentSong && onOpenNowPlaying?.()}
+            className="flex items-center gap-5 min-w-0 text-left group"
+          >
+            <div className="w-14 h-14 bg-yellow-400 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-400/20 flex-shrink-0 overflow-hidden group-hover:scale-105 transition-transform">
+              {currentSong?.coverUrl ? (
+                <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
+              ) : (
+                <Mic2 className="text-black" />
+              )}
             </div>
-          </div>
+            <div className="min-w-0">
+              <h4 className="text-sm font-black text-white tracking-wide truncate group-hover:text-yellow-300 transition-colors">{currentSong?.title || 'FLOW RTN'}</h4>
+              <div className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate">
+                <span>{currentSong?.artist?.username || 'System Radio'}</span>
+                {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
+                  const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                  return (
+                    <span key={`player-collab-desktop-${collaboratorIndex}`}>
+                      {', '}{collaboratorName}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </button>
         </div>
 
         <div className="flex flex-col items-center w-1/3 gap-2">
@@ -342,7 +331,11 @@ const Layout = ({
           >
             <FileText size={16} />
           </button>
-          <LayoutGrid size={18} className="text-gray-600 hover:text-yellow-400 transition cursor-pointer" />
+          <LayoutGrid
+            size={18}
+            onClick={() => currentSong && onOpenNowPlaying?.()}
+            className={`transition cursor-pointer ${currentSong ? 'text-gray-600 hover:text-yellow-400' : 'text-gray-700 cursor-not-allowed opacity-40'}`}
+          />
           <div className="flex items-center gap-3">
             <Volume2 size={18} className="text-gray-600" />
             <div 
@@ -362,45 +355,25 @@ const Layout = ({
       {/* MINI PLAYER MÓVIL */}
       <div className="md:hidden fixed bottom-16 left-0 right-0 z-40 bg-black/95 backdrop-blur-xl border-t border-white/10">
         <div className="px-3 py-2.5 flex items-center gap-2">
-          <div className="w-10 h-10 bg-yellow-400 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
-            {currentSong?.coverUrl ? (
-              <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
-            ) : (
-              <Mic2 className="text-black" size={18} />
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-black truncate">{currentSong?.title || 'RTN MUSIC'}</p>
-            <div className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">
-              <button
-                type="button"
-                onClick={() => currentSong?.artist?._id && onOpenArtist(currentSong.artist._id)}
-                className="inline hover:text-yellow-300"
-              >
-                {currentSong?.artist?.username || 'System Radio'}
-              </button>
-              {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
-                const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
-                const collaboratorId = collaborator?.userId?._id || collaborator?.userId;
-                return (
-                  <span key={`player-collab-mobile-${collaboratorIndex}`}>
-                    {', '}
-                    {collaboratorId ? (
-                      <button
-                        type="button"
-                        onClick={() => onOpenArtist(collaboratorId)}
-                        className="inline text-white/75 hover:text-yellow-300"
-                      >
-                        {collaboratorName}
-                      </button>
-                    ) : (
-                      <span className="text-white/75">{collaboratorName}</span>
-                    )}
-                  </span>
-                );
-              })}
+          <button
+            type="button"
+            onClick={() => currentSong && onOpenNowPlaying?.()}
+            className="flex items-center gap-2 min-w-0 flex-1 text-left"
+          >
+            <div className="w-10 h-10 bg-yellow-400 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
+              {currentSong?.coverUrl ? (
+                <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
+              ) : (
+                <Mic2 className="text-black" size={18} />
+              )}
             </div>
-          </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black truncate">{currentSong?.title || 'RTN MUSIC'}</p>
+              <p className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">
+                {currentSong?.artist?.username || 'System Radio'}
+              </p>
+            </div>
+          </button>
           <button onClick={prevSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
             <SkipBack size={18} />
           </button>
