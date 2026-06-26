@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Estilos base para RTN MUSIC */
 body {
   margin: 0;

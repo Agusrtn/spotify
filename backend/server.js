@@ -15,7 +15,36 @@ const { toFile } = require('openai/uploads');
 const app = express();
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  'https://rtn-musicapp.vercel.app',
+  'http://localhost:3000',
+  process.env.FRONTEND_APP_URL,
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+const isAllowedVercelOrigin = (origin) => {
+  try {
+    return /\.vercel\.app$/i.test(new URL(origin).hostname);
+  } catch (_) {
+    return false;
+  }
+};
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || isAllowedVercelOrigin(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -963,7 +992,7 @@ app.get('/health/instagram-config', (req, res) => {
   const hasRedirectUri = Boolean(IG_REDIRECT_URI);
   const configured = hasAppId && hasAppSecret && hasRedirectUri;
 
-  return res.status(configured ? 200 : 500).json({
+  return res.status(200).json({
     ok: configured,
     instagram: {
       configured,
