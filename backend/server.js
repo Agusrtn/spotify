@@ -645,7 +645,7 @@ const buildUserLibraryPayload = async (userId) => {
       .populate('artist', 'username _id profilePic bio')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators playCount genre',
+        select: 'title artist coverUrl audioUrl visualizerUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -1252,7 +1252,7 @@ const inferGenreFromText = ({ title = '', description = '', lyrics = '' } = {}) 
 
 // RUTA DE SUBIDA (DROP NEW HIT)
 app.post('/upload-song', (req, res) => {
-  upload.fields([{ name: 'audio' }, { name: 'cover' }])(req, res, async (uploadErr) => {
+  upload.fields([{ name: 'audio' }, { name: 'cover' }, { name: 'visualizer' }])(req, res, async (uploadErr) => {
     if (uploadErr) {
       console.error('Error de upload en Cloudinary:', uploadErr.message || uploadErr);
       return res.status(500).json({
@@ -1262,7 +1262,7 @@ app.post('/upload-song', (req, res) => {
     }
 
     try {
-      const { title, description, lyrics, genre, artistId, uploaderId, collaborators: collaboratorsRaw, isScheduled, scheduledPublishAt } = req.body;
+      const { title, description, lyrics, genre, artistId, uploaderId, collaborators: collaboratorsRaw, isScheduled, scheduledPublishAt, visualizerUrl } = req.body;
 
       let parsedCollaborators = [];
       if (collaboratorsRaw) {
@@ -1332,6 +1332,7 @@ app.post('/upload-song', (req, res) => {
         artist: artistId,
         audioUrl: req.files.audio[0].path,
         coverUrl: req.files.cover ? req.files.cover[0].path : '',
+        visualizerUrl: req.files.visualizer?.[0]?.path || String(visualizerUrl || '').trim(),
         collaborators: parsedCollaborators,
         isScheduled: songIsScheduled,
         scheduledPublishAt: songScheduledPublishAt,
@@ -2048,7 +2049,7 @@ app.delete('/admin/playlists/:playlistId', async (req, res) => {
 app.put('/songs/:songId', async (req, res) => {
   try {
     const { songId } = req.params;
-    const { title, description, lyrics, genre, artistId, userId, collaborators: collaboratorsRaw } = req.body;
+    const { title, description, lyrics, genre, artistId, userId, collaborators: collaboratorsRaw, visualizerUrl } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: 'Falta userId para autorizar edición' });
@@ -2089,6 +2090,9 @@ app.put('/songs/:songId', async (req, res) => {
     song.title = (title || '').trim() || song.title;
     song.description = description || '';
     song.lyrics = lyrics || '';
+    if (visualizerUrl !== undefined) {
+      song.visualizerUrl = String(visualizerUrl || '').trim();
+    }
     if (genre !== undefined) {
       song.genre = normalizeGenre(genre) || inferGenreFromText({ title: song.title, description: song.description, lyrics: song.lyrics });
     }
@@ -2189,7 +2193,7 @@ app.get('/search-all', async (req, res) => {
         .populate('artist', 'username _id profilePic bio')
         .populate({
           path: 'songs',
-          select: 'title artist coverUrl audioUrl collaborators playCount genre',
+          select: 'title artist coverUrl audioUrl visualizerUrl collaborators playCount genre',
           populate: [
             { path: 'artist', select: 'username _id profilePic role' },
             { path: 'collaborators.userId', select: 'username _id' },
@@ -2289,7 +2293,7 @@ app.get('/discovery-feed', async (req, res) => {
       .populate('artist', 'username _id profilePic bio')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators playCount genre',
+        select: 'title artist coverUrl audioUrl visualizerUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -2352,7 +2356,7 @@ app.get('/artists/:artistId', async (req, res) => {
       .populate('artist', 'username _id profilePic bio')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators playCount genre',
+        select: 'title artist coverUrl audioUrl visualizerUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -3171,7 +3175,7 @@ app.get('/albums', async (req, res) => {
       .populate('artist', 'username profilePic role')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators playCount genre',
+        select: 'title artist coverUrl audioUrl visualizerUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -3192,7 +3196,7 @@ app.get('/albums/artist/:artistId', async (req, res) => {
       .populate('artist', 'username profilePic role')
       .populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators',
+        select: 'title artist coverUrl audioUrl visualizerUrl collaborators',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },
@@ -3368,7 +3372,7 @@ app.put('/albums/:albumId', (req, res) => {
       await album.populate('artist', 'username profilePic role');
       await album.populate({
         path: 'songs',
-        select: 'title artist coverUrl audioUrl collaborators playCount genre',
+        select: 'title artist coverUrl audioUrl visualizerUrl collaborators playCount genre',
         populate: [
           { path: 'artist', select: 'username _id profilePic role' },
           { path: 'collaborators.userId', select: 'username _id' },

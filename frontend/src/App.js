@@ -237,6 +237,7 @@ const normalizeSongEntity = (song) => {
   return {
     ...song,
     coverUrl: normalizeMediaUrl(song.coverUrl),
+    visualizerUrl: normalizeMediaUrl(song.visualizerUrl),
     artist: normalizeArtistEntity(song.artist),
     collaborators: Array.isArray(song.collaborators)
       ? song.collaborators.map((collaborator) => ({
@@ -1173,7 +1174,9 @@ function App() {
     if (songId) {
       const song = allSongs.find((item) => String(item._id) === String(songId));
       if (song) {
-        setSelectedSong(song);
+        const songIndex = Math.max(0, allSongs.findIndex((item) => String(item._id) === String(songId)));
+        playSong(song, songIndex, { queue: allSongs, mode: 'all' });
+        setShowNowPlaying(true);
         setView('inicio');
         showToast('Abriendo canción compartida', 'success');
       }
@@ -1208,6 +1211,7 @@ function App() {
       const cleanUrl = `${window.location.origin}${window.location.pathname}`;
       window.history.replaceState({}, '', cleanUrl);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSongs, albums, playlists, userPlaylists]);
 
   useEffect(() => {
@@ -5102,6 +5106,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
   const [description, setDescription] = useState('');
   const [lyrics, setLyrics] = useState('');
   const [genre, setGenre] = useState('otro');
+  const [visualizerUrl, setVisualizerUrl] = useState('');
   const [artistId, setArtistId] = useState('');
   const [collaborators, setCollaborators] = useState([]);
   const [panelGradient, setPanelGradient] = useState(getRandomAlbumGradient());
@@ -5115,6 +5120,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
     setDescription(song.description || '');
     setLyrics(song.lyrics || '');
     setGenre(song.genre || 'otro');
+    setVisualizerUrl(song.visualizerUrl || '');
     setArtistId(song.artist?._id || '');
     setCollaborators((song.collaborators || []).map((collaborator) => ({
       name: collaborator.userId?.username || collaborator.name || '',
@@ -5173,6 +5179,7 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
       description,
       lyrics,
       genre,
+      visualizerUrl,
       ...(user?.role === 'admin' ? { artistId } : {}),
       ...(user?.role === 'admin' ? {
         collaborators: JSON.stringify(
@@ -5489,9 +5496,18 @@ const SongDetailPanel = ({ song, onClose, user, members, onPlay, onSave, onDelet
                     className="w-full h-36 bg-black/40 border border-white/10 rounded-xl p-3 outline-none focus:border-yellow-400"
                     placeholder="Descripcion"
                   />
+                  <input
+                    value={visualizerUrl}
+                    onChange={(e) => setVisualizerUrl(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 outline-none focus:border-yellow-400"
+                    placeholder="Link MP4 visualizer (opcional)"
+                  />
                 </>
               ) : (
-                <p className="text-sm text-gray-300 whitespace-pre-wrap">{description || 'Sin descripcion'}</p>
+                <>
+                  <p className="text-sm text-gray-300 whitespace-pre-wrap">{description || 'Sin descripcion'}</p>
+                  {song.visualizerUrl && <p className="text-[10px] text-yellow-300/80 font-black uppercase tracking-widest break-all">Visualizer: {song.visualizerUrl}</p>}
+                </>
               )}
             </div>
           </div>
@@ -6101,6 +6117,8 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   const [genre, setGenre] = useState('otro');
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
+  const [visualizerFile, setVisualizerFile] = useState(null);
+  const [visualizerUrl, setVisualizerUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [lrcAiLoading, setLrcAiLoading] = useState(false);
   const [artistId, setArtistId] = useState(userId);
@@ -6114,6 +6132,8 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
       setArtistId(userId);
       setCollaborators([]);
       setGenre('otro');
+      setVisualizerFile(null);
+      setVisualizerUrl('');
       setIsScheduled(false);
       setScheduledDate('');
     }
@@ -6220,6 +6240,8 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
     ));
     formData.append('audio', audioFile);
     formData.append('cover', coverFile);
+    if (visualizerFile) formData.append('visualizer', visualizerFile);
+    if (visualizerUrl.trim()) formData.append('visualizerUrl', visualizerUrl.trim());
     formData.append('isScheduled', isScheduled);
     if (isScheduled) {
       formData.append('scheduledPublishAt', new Date(scheduledDate).toISOString());
@@ -6245,6 +6267,8 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
         setGenre('otro');
         setAudioFile(null);
         setCoverFile(null);
+        setVisualizerFile(null);
+        setVisualizerUrl('');
         setArtistId(userId);
         setCollaborators([]);
         setIsScheduled(false);
@@ -6288,6 +6312,20 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
           <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-8 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
             <input type="file" accept="image/*" required onChange={(e) => setCoverFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{coverFile ? `OK ${coverFile.name}` : 'SELECCIONAR CARATULA'}</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-6 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
+              <input type="file" accept="video/mp4,video/*" onChange={(e) => setVisualizerFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{visualizerFile ? `OK ${visualizerFile.name}` : 'MP4 VISUALIZER'}</p>
+            </div>
+            <input
+              value={visualizerUrl}
+              type="url"
+              placeholder="LINK MP4 VISUALIZER"
+              className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
+              onChange={(e) => setVisualizerUrl(e.target.value)}
+            />
           </div>
 
           <input value={title} type="text" placeholder="NOMBRE DEL TRACK" required className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold" onChange={(e) => setTitle(e.target.value)} />

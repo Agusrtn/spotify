@@ -8,6 +8,7 @@ const SongSchema = new mongoose.Schema({
   artist: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   audioUrl: { type: String, required: true }, 
   coverUrl: { type: String, default: '' },
+  visualizerUrl: { type: String, default: '' },
   playCount: { type: Number, default: 0 },
   listenSeconds: { type: Number, default: 0 },
   lastPlayedAt: { type: Date },

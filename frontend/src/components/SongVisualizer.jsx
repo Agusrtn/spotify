@@ -1,16 +1,20 @@
 import React, { useEffect, useRef } from 'react';
-import { Activity, BarChart2, Zap } from 'lucide-react';
+import { Activity, BarChart2, Video, Zap } from 'lucide-react';
 
 // Persist the audio nodes globally so we don't reconnect them multiple times and crash
 let globalAudioContext = null;
 let globalAnalyser = null;
 let globalSourceNode = null;
+let globalAudioElement = null;
 
-const SongVisualizer = ({ audioRef, isPlaying, mode, setMode }) => {
+const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = '' }) => {
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
+  const hasVideoVisualizer = Boolean(String(visualizerUrl || '').trim());
 
   useEffect(() => {
+    if (hasVideoVisualizer) return undefined;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -34,11 +38,13 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode }) => {
           globalAudioContext = new AudioContextClass();
           globalAnalyser = globalAudioContext.createAnalyser();
           globalAnalyser.fftSize = 256;
-          
-          // Connect audioRef to analyser
+        }
+
+        if (!globalSourceNode || globalAudioElement !== audioRef.current) {
           globalSourceNode = globalAudioContext.createMediaElementSource(audioRef.current);
           globalSourceNode.connect(globalAnalyser);
           globalAnalyser.connect(globalAudioContext.destination);
+          globalAudioElement = audioRef.current;
         }
       } catch (err) {
         console.warn('Web Audio API connection failed (possibly double-connected or CORS blocked):', err);
@@ -261,12 +267,33 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode }) => {
       window.removeEventListener('resize', resizeCanvas);
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [audioRef, isPlaying, mode]);
+  }, [audioRef, isPlaying, mode, hasVideoVisualizer]);
+
+  if (hasVideoVisualizer) {
+    return (
+      <div className="relative w-full h-full overflow-hidden rounded-[28px] bg-black border border-white/10">
+        <video
+          key={visualizerUrl}
+          src={visualizerUrl}
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/20 pointer-events-none" />
+        <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full bg-black/65 border border-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white/80">
+          <Video size={13} />
+          Video visualizer
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center">
       {/* Canvas */}
-      <canvas ref={canvasRef} className="w-full h-full min-h-[320px] md:min-h-[420px] rounded-[40px] bg-black/40 border border-white/5" />
+      <canvas ref={canvasRef} className="w-full h-full min-h-[320px] rounded-[28px] bg-black/40 border border-white/5" />
 
       {/* Visualizer Mode Controls */}
       <div className="absolute top-4 flex items-center bg-black/85 backdrop-blur-xl border border-white/10 rounded-2xl p-1.5 gap-1.5 z-10 shadow-xl">
