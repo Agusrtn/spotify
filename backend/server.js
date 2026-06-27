@@ -1247,10 +1247,14 @@ const populateRadioStation = async (stationDoc) => {
   ]);
 
   const obj = populated.toObject();
-  // Add elapsed time for radio sync
+  // Add elapsed time for radio sync (live timeline with pause/seek)
   if (obj.currentSong && obj.currentSongStartedAt) {
-    const elapsedMs = Date.now() - new Date(obj.currentSongStartedAt).getTime();
-    obj.currentSongElapsedSeconds = Math.floor(elapsedMs / 1000);
+    if (obj.isPaused) {
+      obj.currentSongElapsedSeconds = Number(obj.pauseOffsetSeconds || 0);
+    } else {
+      const elapsedMs = Date.now() - new Date(obj.currentSongStartedAt).getTime();
+      obj.currentSongElapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    }
   } else {
     obj.currentSongElapsedSeconds = 0;
   }
@@ -1262,6 +1266,12 @@ const advanceRadioToNext = async (stationDoc) => {
   const nextEntry = stationDoc.queue[0];
   stationDoc.currentSong = nextEntry?.song || null;
   stationDoc.currentSongStartedAt = nextEntry ? new Date() : null;
+
+  // Reset global pause state when advancing
+  stationDoc.isPaused = false;
+  stationDoc.pauseAt = null;
+  stationDoc.pauseOffsetSeconds = 0;
+
   stationDoc.queue = stationDoc.queue.slice(1);
   await stationDoc.save();
   return stationDoc;
@@ -1850,8 +1860,18 @@ app.post('/admin/radio/play-now', async (req, res) => {
 
     const station = await getOrCreateRadioStation();
     station.currentSong = song._id;
+
+    // Remove duplicates from queue
     station.queue = station.queue.filter((entry) => String(entry.song) !== String(song._id));
+
     station.isLive = true;
+
+    // Reset pause state when we force a new song to play
+    station.isPaused = false;
+    station.pauseAt = null;
+    station.pauseOffsetSeconds = 0;
+    station.currentSongStartedAt = new Date();
+
     station.updatedBy = requester._id;
     await station.save();
 
@@ -1859,6 +1879,110 @@ app.post('/admin/radio/play-now', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al reproducir en radio' });
+  }
+});
+
+// Admin: Pause global
+app.post('/admin/radio/pause', async (req, res) => {
+  try {
+    const { requesterId } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) return res.status(403).json({ error: 'Solo admins pueden controlar la radio' });
+
+    const station = await getOrCreateRadioStation();
+    if (!station.currentSong || !station.currentSongStartedAt) {
+      return res.status(400).json({ error: 'Radio sin cancion activa' });
+    }
+
+    const elapsedMs = Date.now() - new Date(station.currentSongStartedAt).getTime();
+    const offsetSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+
+    station.isPaused = true;
+    station.pauseAt = new Date();
+    station.pauseOffsetSeconds = offsetSeconds;
+
+    station.updatedBy = requester._id;
+    await station.save();
+
+    return res.json({ message: 'Radio pausada', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al pausar la radio' });
+  }
+});
+
+// Admin: Play/Resume global
+app.post('/admin/radio/play', async (req, res) => {
+  try {
+    const { requesterId } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) return res.status(403).json({ error: 'Solo admins pueden controlar la radio' });
+
+    const station = await getOrCreateRadioStation();
+    if (!station.currentSong) {
+      return res.status(400).json({ error: 'Radio sin cancion activa' });
+    }
+
+    // If we are resuming, move the song start time so that elapsed becomes pauseOffsetSeconds
+    if (station.isPaused) {
+      const now = Date.now();
+      const offsetSeconds = Number(station.pauseOffsetSeconds || 0);
+      station.currentSongStartedAt = new Date(now - offsetSeconds * 1000);
+    } else if (!station.currentSongStartedAt) {
+      station.currentSongStartedAt = new Date();
+    }
+
+    station.isPaused = false;
+    station.pauseAt = null;
+    // keep pauseOffsetSeconds; it will be recalculated by elapsed while playing
+
+    station.updatedBy = requester._id;
+    await station.save();
+
+    return res.json({ message: 'Radio reproduciendo', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al reproducir la radio' });
+  }
+});
+
+// Admin: Seek global dentro de la canción actual.
+// - set pauseOffsetSeconds
+// - if currently paused => keep paused
+// - if playing => we adjust currentSongStartedAt accordingly
+app.post('/admin/radio/seek', async (req, res) => {
+  try {
+    const { requesterId, seekToSeconds } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) return res.status(403).json({ error: 'Solo admins pueden controlar la radio' });
+
+    const seconds = Number(seekToSeconds);
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return res.status(400).json({ error: 'seekToSeconds invalido' });
+    }
+
+    const station = await getOrCreateRadioStation();
+    if (!station.currentSong || !station.currentSongStartedAt) {
+      return res.status(400).json({ error: 'Radio sin cancion activa' });
+    }
+
+    station.pauseOffsetSeconds = Math.floor(seconds);
+
+    if (station.isPaused) {
+      // Keep paused: elapsed is derived from pauseOffsetSeconds
+      station.pauseAt = new Date();
+    } else {
+      // Playing: back-calculate startedAt so elapsed becomes seekToSeconds
+      station.currentSongStartedAt = new Date(Date.now() - Math.floor(seconds) * 1000);
+    }
+
+    station.updatedBy = requester._id;
+    await station.save();
+
+    return res.json({ message: 'Radio seek aplicado', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al hacer seek en la radio' });
   }
 });
 

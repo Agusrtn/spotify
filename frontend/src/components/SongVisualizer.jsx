@@ -20,9 +20,16 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+
+      const nextW = Math.max(1, Math.floor(rect.width * dpr));
+      const nextH = Math.max(1, Math.floor(rect.height * dpr));
+
+      // Only update intrinsic size when needed
+      if (canvas.width !== nextW) canvas.width = nextW;
+      if (canvas.height !== nextH) canvas.height = nextH;
+
+      // Reset transform to avoid cumulative ctx.scale()
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     };
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
@@ -305,8 +312,8 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
   }
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center">
-      <canvas ref={canvasRef} className="w-full h-full min-h-[320px] max-h-[80vh] rounded-[28px] bg-black border border-white/5" />
+    <div className="relative w-full h-full flex flex-col items-center justify-center" style={{ overflow: 'hidden' }}>
+      <canvas ref={canvasRef} className="w-full h-full min-h-[280px] max-h-[60vh] rounded-[28px] bg-black border border-white/5" />
       {onClose && (
         <button
           onClick={onClose}

@@ -11,8 +11,15 @@ const RadioStationSchema = new mongoose.Schema({
   subtitle: { type: String, default: 'En directo desde la crew' },
   isLive: { type: Boolean, default: true },
   autoplay: { type: Boolean, default: true },
+
   currentSong: { type: mongoose.Schema.Types.ObjectId, ref: 'Song', default: null },
   currentSongStartedAt: { type: Date, default: null },
+
+  // Global live control (multiusuario)
+  isPaused: { type: Boolean, default: false },
+  pauseAt: { type: Date, default: null }, // cuando se pausó
+  pauseOffsetSeconds: { type: Number, default: 0 }, // posición dentro de la canción al pausar
+
   queue: [RadioQueueEntrySchema],
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });

@@ -69,6 +69,7 @@ const Layout = ({
   onToggleNotifications,
   onOpenNowPlaying,
   playMode,
+  onRadioSeek, // (admin only) seek within the global live timeline
 }) => {
   const isRadioPlayback = playMode === 'radio';
   const [showLyrics, setShowLyrics] = useState(false);
@@ -107,10 +108,21 @@ const Layout = ({
   };
 
   const handleSeek = (e) => {
-    if (!audioRef.current || !duration) return;
+    if (!duration) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
-    audioRef.current.currentTime = percent * duration;
+    const seekSeconds = Math.max(0, Math.min(duration, percent * duration));
+
+    if (isRadioPlayback) {
+      // Only admins can control global live playback
+      if (user?.role !== 'admin') return;
+      onRadioSeek?.(seekSeconds);
+      return;
+    }
+
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = seekSeconds;
   };
 
   const currentSongCollaborators = useMemo(
@@ -315,9 +327,9 @@ const Layout = ({
           <div className="w-full flex items-center gap-3">
             <span className="text-[9px] text-gray-600 font-black whitespace-nowrap">{formatTime(currentTime)}</span>
             <div 
-              className={`h-[4px] flex-1 bg-white/5 rounded-full overflow-hidden ${isRadioPlayback ? '' : 'cursor-pointer hover:h-[6px]'} transition-all`}
-              onClick={isRadioPlayback ? undefined : handleSeek}
-              title={isRadioPlayback ? 'No disponible en modo radio' : ''}
+              className={`h-[4px] flex-1 bg-white/5 rounded-full overflow-hidden ${(!isRadioPlayback || user?.role === 'admin') ? 'cursor-pointer hover:h-[6px]' : ''} transition-all`}
+              onClick={(!isRadioPlayback || user?.role === 'admin') ? handleSeek : undefined}
+              title={isRadioPlayback ? (user?.role === 'admin' ? 'Seek global (admin)' : 'No disponible en modo radio') : ''}
             >
               <div 
                 className="h-full bg-yellow-400 shadow-[0_0_10px_#facc15]"
@@ -404,8 +416,8 @@ const Layout = ({
           </button>
         </div>
         <div
-          className="h-[2px] bg-white/10 cursor-pointer mx-4"
-          onClick={handleSeek}
+          className={`h-[2px] bg-white/10 mx-4 ${(!isRadioPlayback || user?.role === 'admin') ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+          onClick={(!isRadioPlayback || user?.role === 'admin') ? handleSeek : undefined}
         >
           <div
             className="h-full bg-yellow-400"

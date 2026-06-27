@@ -1714,41 +1714,87 @@ function App() {
 
   const startRadioSync = () => {
     if (radioSyncRef.current) clearInterval(radioSyncRef.current);
+
     radioSyncRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}/radio/sync`);
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.station) return;
+
         const synced = normalizeRadioStation(data.station);
-        
         setRadioStation(synced);
 
-        // If server switched current song, switch client playback too
-        const serverSongId = synced?.currentSong?._id;
+        const serverSong = synced?.currentSong;
+        const serverSongId = serverSong?._id;
         const clientSongId = activeSongIdRef.current;
-        
-        if (serverSongId && serverSongId !== clientSongId && isRadioPlayback) {
-          // Server has a different song — switch to it
-          const newQueue = [
-            synced.currentSong,
-            ...(synced.queue || []).map((entry) => entry.song).filter((s) => s?._id && String(s._id) !== String(serverSongId)),
-          ].filter(Boolean);
-          
-          // Set elapsed time from server
-          const elapsedSec = synced.currentSongElapsedSeconds || 0;
-          
-          playSong(synced.currentSong, 0, { 
-            queue: newQueue, 
+
+        if (!isRadioPlayback) return;
+
+        // If server has no current song -> pause locally
+        if (!serverSongId) {
+          setIsPlaying(false);
+          if (audioRef.current) audioRef.current.pause();
+          return;
+        }
+
+        // Build expected radio queue (current + rest)
+        const expectedQueue = [
+          serverSong,
+          ...(synced.queue || [])
+            .map((entry) => entry.song)
+            .filter((s) => s?._id && String(s._id) !== String(serverSongId)),
+        ].filter(Boolean);
+
+        // If server switched current song -> switch client playback and seek to server elapsed
+        if (serverSongId && String(serverSongId) !== String(clientSongId)) {
+          const elapsedSec = Number(synced.currentSongElapsedSeconds || 0);
+
+          playSong(serverSong, 0, {
+            queue: expectedQueue,
             mode: 'radio',
             startAtSeconds: elapsedSec,
           });
-        } else if (!serverSongId && isRadioPlayback) {
-          // No current song on server - pause radio
-          setIsPlaying(false);
-          if (audioRef.current) audioRef.current.pause();
+
+          // Ensure pause/play matches server state right after switching
+          if (synced.isPaused) {
+            setIsPlaying(false);
+            if (audioRef.current) audioRef.current.pause();
+          } else {
+            setIsPlaying(true);
+          }
+
+          return;
+        }
+
+        // Same song: apply global paused/seeking state based on server
+        if (audioRef.current) {
+          const isPaused = Boolean(synced.isPaused);
+
+          if (isPaused) {
+            // Keep client paused and aligned to pauseOffsetSeconds (playhead while paused)
+            const pausePos = Number(synced.pauseOffsetSeconds || 0);
+            if (!Number.isFinite(pausePos)) return;
+
+            // Only adjust if materially different to avoid thrashing
+            if (Math.abs(audioRef.current.currentTime - pausePos) > 0.6) {
+              audioRef.current.currentTime = pausePos;
+            }
+            audioRef.current.pause();
+            setIsPlaying(false);
+          } else {
+            // Play and align to live playhead
+            const livePos = Number(synced.currentSongElapsedSeconds || 0);
+
+            if (Math.abs(audioRef.current.currentTime - livePos) > 0.9) {
+              audioRef.current.currentTime = livePos;
+            }
+
+            audioRef.current.play().catch(() => {});
+            setIsPlaying(true);
+          }
         }
       } catch (_) {}
-    }, 3000); // Poll every 3 seconds
+    }, 2500); // Poll every ~2.5s for tighter sync
   };
 
   const stopRadioSync = () => {
@@ -1978,7 +2024,43 @@ function App() {
     lastTrackedPositionRef.current = time;
   };
 
-  const togglePlay = () => setIsPlaying(!isPlaying);
+  const toggleRadioPlayPause = async () => {
+    if (!user?._id || user.role !== 'admin') return;
+
+    // If the server says we're paused -> play, else -> pause
+    const isCurrentlyPaused = Boolean(radioStation?.isPaused);
+
+    const endpoint = isCurrentlyPaused
+      ? `${API_URL}/admin/radio/play`
+      : `${API_URL}/admin/radio/pause`;
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo actualizar la radio', 'error');
+        return;
+      }
+      if (data?.station) applyRadioStation(data.station);
+    } catch (err) {
+      console.error(err);
+      showToast('Error de conexión actualizando la radio', 'error');
+    }
+  };
+
+  const togglePlay = () => {
+    if (isRadioPlayback) {
+      // In radio mode, only admins control global playback.
+      if (user?.role !== 'admin') return;
+      toggleRadioPlayPause();
+      return;
+    }
+    setIsPlaying(!isPlaying);
+  };
   const nextSong = () => {
     if (!playQueue.length || !allSongs.length) return;
 
@@ -2979,6 +3061,28 @@ function App() {
       audioRef={audioRef}
       onTimeUpdate={handlePlaybackTimeUpdate}
       playMode={playMode}
+      onRadioSeek={(seekSeconds) => {
+        if (!user?._id || user.role !== 'admin') return;
+
+        // Admin-only global seek inside live timeline
+        fetch(`${API_URL}/admin/radio/seek`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requesterId: user._id,
+            seekToSeconds: Math.max(0, Math.floor(Number(seekSeconds || 0))),
+          }),
+        })
+          .then((r) => r.json().catch(() => ({})).then((data) => ({ ok: r.ok, data })))
+          .then(({ ok, data }) => {
+            if (!ok) showToast(data.error || 'No se pudo hacer seek en la radio', 'error');
+            if (data?.station) applyRadioStation(data.station);
+          })
+          .catch((err) => {
+            console.error(err);
+            showToast('Error haciendo seek en la radio', 'error');
+          });
+      }}
       onDurationChange={(dur) => {
         setDuration(dur);
         const pending = Number(pendingResumeSecondsRef.current || 0);
