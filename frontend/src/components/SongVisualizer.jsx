@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Activity, BarChart2, Video, Zap } from 'lucide-react';
+import { Activity, BarChart2, Video, X, Zap } from 'lucide-react';
 
 // Persist the audio nodes globally so we don't reconnect them multiple times and crash
 let globalAudioContext = null;
@@ -7,7 +7,7 @@ let globalAnalyser = null;
 let globalSourceNode = null;
 let globalAudioElement = null;
 
-const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = '' }) => {
+const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = '', onClose }) => {
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
   const hasVideoVisualizer = Boolean(String(visualizerUrl || '').trim());
@@ -286,6 +286,14 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
           <Video size={13} />
           Video visualizer
         </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 z-10 w-9 h-9 bg-black/60 backdrop-blur-md border border-white/20 rounded-xl flex items-center justify-center text-gray-300 hover:text-white hover:border-white/40 transition-all"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
     );
   }
@@ -293,7 +301,15 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center">
       {/* Canvas */}
-      <canvas ref={canvasRef} className="w-full h-full min-h-[320px] rounded-[28px] bg-black/40 border border-white/5" />
+      <canvas ref={canvasRef} className="w-full h-full min-h-[320px] max-h-[80vh] rounded-[28px] bg-black/40 border border-white/5" />
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 w-9 h-9 bg-black/60 backdrop-blur-md border border-white/20 rounded-xl flex items-center justify-center text-gray-300 hover:text-white hover:border-white/40 transition-all"
+        >
+          <X size={16} />
+        </button>
+      )}
 
       {/* Visualizer Mode Controls */}
       <div className="absolute top-4 flex items-center bg-black/85 backdrop-blur-xl border border-white/10 rounded-2xl p-1.5 gap-1.5 z-10 shadow-xl">
