@@ -303,19 +303,19 @@ const NowPlayingView = ({
           </main>
 
           <aside className="min-w-0 overflow-hidden rounded-lg bg-[#181818] p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)]">
-            <div className="aspect-[4/5] w-full overflow-hidden rounded-lg bg-black md:aspect-video lg:aspect-[4/5]">
+            <div className="aspect-[4/5] w-full overflow-hidden rounded-lg bg-black md:aspect-video lg:aspect-[4/5] relative">
               {hasVisualizerVideo ? (
                 <video
                   src={currentSong.visualizerUrl}
                   poster={mediaPoster}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain bg-black"
                   autoPlay
                   loop
                   muted
                   playsInline
                 />
               ) : mediaPoster ? (
-                <img src={mediaPoster} alt={currentSong.title} className="h-full w-full object-cover" />
+                <img src={mediaPoster} alt={currentSong.title} className="h-full w-full object-contain bg-black" />
               ) : (
                 <div className="h-full w-full bg-gradient-to-br from-yellow-400/35 via-zinc-900 to-black" />
               )}

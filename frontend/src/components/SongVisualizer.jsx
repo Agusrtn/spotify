@@ -21,10 +21,13 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
 
-      const nextW = Math.max(1, Math.floor(rect.width * dpr));
-      const nextH = Math.max(1, Math.floor(rect.height * dpr));
+      // Keep CSS size stable (prevents visual stretching)
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
 
-      // Only update intrinsic size when needed
+      const nextW = Math.max(1, Math.round(rect.width * dpr));
+      const nextH = Math.max(1, Math.round(rect.height * dpr));
+
       if (canvas.width !== nextW) canvas.width = nextW;
       if (canvas.height !== nextH) canvas.height = nextH;
 
@@ -107,13 +110,12 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
 
       timeIndex += isPlaying ? 0.08 : 0.01;
 
-      // Fallback simulated data when silent
+      // If we have no real data, do NOT generate a fake spectrum aggressively.
+      // Instead keep the previous dataArray (slower/cleaner visuals) to avoid "feisimo" random animation.
+      // We'll only animate subtly using the timeIndex-driven glow in each mode via current dataArray.
       if (!hasRealData) {
-        for (let i = 0; i < bufferLength; i++) {
-          const pulse = Math.sin(timeIndex + i * 0.12) * Math.cos(timeIndex * 0.4 + i * 0.06);
-          const base = isPlaying ? 100 : 20;
-          dataArray[i] = Math.max(0, base + pulse * base * 0.6);
-        }
+        // Leave dataArray as-is (initially zeros). This results in a calmer, consistent look
+        // rather than a synthetic spectrum.
       }
 
       if (mode === 'bars') {
