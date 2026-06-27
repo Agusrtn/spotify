@@ -12,6 +12,7 @@ const RadioStationSchema = new mongoose.Schema({
   isLive: { type: Boolean, default: true },
   autoplay: { type: Boolean, default: true },
   currentSong: { type: mongoose.Schema.Types.ObjectId, ref: 'Song', default: null },
+  currentSongStartedAt: { type: Date, default: null },
   queue: [RadioQueueEntrySchema],
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });

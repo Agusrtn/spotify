@@ -68,7 +68,9 @@ const Layout = ({
   unreadNotifications,
   onToggleNotifications,
   onOpenNowPlaying,
+  playMode,
 }) => {
+  const isRadioPlayback = playMode === 'radio';
   const [showLyrics, setShowLyrics] = useState(false);
 
   const parsedLyrics = useMemo(() => {
@@ -289,7 +291,9 @@ const Layout = ({
           <div className="flex items-center gap-8">
             <button
               onClick={prevSong}
-              className="text-gray-600 hover:text-white transition cursor-pointer hover:scale-110"
+              disabled={isRadioPlayback}
+              className={`transition ${isRadioPlayback ? 'text-gray-800 cursor-not-allowed' : 'text-gray-600 hover:text-white cursor-pointer hover:scale-110'}`}
+              title={isRadioPlayback ? 'No disponible en modo radio' : 'Anterior'}
             >
               <SkipBack size={20} />
             </button>
@@ -301,7 +305,9 @@ const Layout = ({
             </button>
             <button
               onClick={nextSong}
-              className="text-gray-600 hover:text-white transition cursor-pointer hover:scale-110"
+              disabled={isRadioPlayback}
+              className={`transition ${isRadioPlayback ? 'text-gray-800 cursor-not-allowed' : 'text-gray-600 hover:text-white cursor-pointer hover:scale-110'}`}
+              title={isRadioPlayback ? 'No disponible en modo radio' : 'Siguiente'}
             >
               <SkipForward size={20} />
             </button>
@@ -309,8 +315,9 @@ const Layout = ({
           <div className="w-full flex items-center gap-3">
             <span className="text-[9px] text-gray-600 font-black whitespace-nowrap">{formatTime(currentTime)}</span>
             <div 
-              className="h-[4px] flex-1 bg-white/5 rounded-full overflow-hidden cursor-pointer hover:h-[6px] transition-all"
-              onClick={handleSeek}
+              className={`h-[4px] flex-1 bg-white/5 rounded-full overflow-hidden ${isRadioPlayback ? '' : 'cursor-pointer hover:h-[6px]'} transition-all`}
+              onClick={isRadioPlayback ? undefined : handleSeek}
+              title={isRadioPlayback ? 'No disponible en modo radio' : ''}
             >
               <div 
                 className="h-full bg-yellow-400 shadow-[0_0_10px_#facc15]"

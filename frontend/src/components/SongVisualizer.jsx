@@ -1,15 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { Activity, BarChart2, Video, X, Zap } from 'lucide-react';
 
-// Persist the audio nodes globally so we don't reconnect them multiple times and crash
-let globalAudioContext = null;
-let globalAnalyser = null;
-let globalSourceNode = null;
-let globalAudioElement = null;
-
 const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = '', onClose }) => {
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
+  const analyserRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const sourceRef = useRef(null);
   const hasVideoVisualizer = Boolean(String(visualizerUrl || '').trim());
 
   useEffect(() => {
@@ -20,63 +17,79 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Handle resizing
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * window.devicePixelRatio;
-      canvas.height = rect.height * window.devicePixelRatio;
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
     };
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // Initialize Web Audio API nodes
-    if (audioRef?.current) {
-      try {
-        if (!globalAudioContext) {
-          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          globalAudioContext = new AudioContextClass();
-          globalAnalyser = globalAudioContext.createAnalyser();
-          globalAnalyser.fftSize = 256;
-        }
+    // Initialize Web Audio API - create fresh per component mount
+    let analyser = null;
+    let audioCtx = null;
+    let sourceNode = null;
 
-        if (!globalSourceNode || globalAudioElement !== audioRef.current) {
-          globalSourceNode = globalAudioContext.createMediaElementSource(audioRef.current);
-          globalSourceNode.connect(globalAnalyser);
-          globalAnalyser.connect(globalAudioContext.destination);
-          globalAudioElement = audioRef.current;
+    const initAudio = () => {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioCtx();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+
+        if (audioRef?.current) {
+          sourceNode = audioCtx.createMediaElementSource(audioRef.current);
+          sourceNode.connect(analyser);
+          analyser.connect(audioCtx.destination);
+          analyserRef.current = analyser;
+          audioContextRef.current = audioCtx;
+          sourceRef.current = sourceNode;
         }
       } catch (err) {
-        console.warn('Web Audio API connection failed (possibly double-connected or CORS blocked):', err);
+        // If this fails (e.g. double-connect), use a fallback analyser
+        if (!analyser) {
+          analyser = {
+            frequencyBinCount: 128,
+            getByteFrequencyData: (arr) => {
+              for (let i = 0; i < arr.length; i++) {
+                arr[i] = 0;
+              }
+            },
+          };
+          analyserRef.current = analyser;
+        }
       }
+    };
+
+    initAudio();
+
+    // Resume audio context on user interaction
+    if (audioCtx && isPlaying && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
     }
 
-    // Try to resume AudioContext on play
-    if (globalAudioContext && isPlaying) {
-      if (globalAudioContext.state === 'suspended') {
-        globalAudioContext.resume().catch(() => {});
-      }
-    }
-
-    // Data arrays
-    const bufferLength = globalAnalyser ? globalAnalyser.frequencyBinCount : 128;
+    const bufferLength = analyser ? analyser.frequencyBinCount : 128;
     const dataArray = new Uint8Array(bufferLength);
     let timeIndex = 0;
 
     const draw = () => {
       animationRef.current = requestAnimationFrame(draw);
 
-      const width = canvas.width / window.devicePixelRatio;
-      const height = canvas.height / window.devicePixelRatio;
+      const width = canvas.width / (window.devicePixelRatio || 1);
+      const height = canvas.height / (window.devicePixelRatio || 1);
 
-      // Clear canvas with a very soft semi-transparent overlay for motion blur trails
-      ctx.fillStyle = 'rgba(2, 2, 2, 0.25)';
+      // Clear canvas completely (no motion blur trails)
+      ctx.clearRect(0, 0, width, height);
+
+      // Fill with very dark background
+      ctx.fillStyle = '#080808';
       ctx.fillRect(0, 0, width, height);
 
       let hasRealData = false;
-      if (globalAnalyser && isPlaying) {
-        globalAnalyser.getByteFrequencyData(dataArray);
-        // Check if there is actual non-zero audio content
+      if (analyser && isPlaying) {
+        analyser.getByteFrequencyData(dataArray);
         for (let i = 0; i < bufferLength; i++) {
           if (dataArray[i] > 0) {
             hasRealData = true;
@@ -85,176 +98,160 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
         }
       }
 
-      timeIndex += isPlaying ? 0.05 : 0.005;
+      timeIndex += isPlaying ? 0.08 : 0.01;
 
-      // If we don't have real data (silent, paused, or CORS blocked), generate simulated fallback data
+      // Fallback simulated data when silent
       if (!hasRealData) {
         for (let i = 0; i < bufferLength; i++) {
-          // Pulse simulation using sine waves
-          const pulse = Math.sin(timeIndex + i * 0.1) * Math.cos(timeIndex * 0.5 + i * 0.05);
-          const baseValue = isPlaying ? 90 : 25; // quieter when paused
-          dataArray[i] = Math.max(0, baseValue + pulse * baseValue);
+          const pulse = Math.sin(timeIndex + i * 0.12) * Math.cos(timeIndex * 0.4 + i * 0.06);
+          const base = isPlaying ? 100 : 20;
+          dataArray[i] = Math.max(0, base + pulse * base * 0.6);
         }
       }
 
-      // Draw depending on mode
       if (mode === 'bars') {
-        // --- NEON BARS MODE ---
-        const barWidth = (width / bufferLength) * 1.6;
+        // NEON BARS
+        const barWidth = (width / bufferLength) * 1.8;
         let x = 0;
 
         for (let i = 0; i < bufferLength; i++) {
-          const barHeight = (dataArray[i] / 255) * height * 0.75;
+          const barHeight = (dataArray[i] / 255) * height * 0.8;
 
-          // Glowing gradients
-          const gradient = ctx.createLinearGradient(0, height, 0, height - barHeight);
-          gradient.addColorStop(0, '#f59e0b'); // amber
-          gradient.addColorStop(0.5, '#eab308'); // yellow
-          gradient.addColorStop(1, '#ffffff'); // white top
+          // Color gradient per bar - yellow to white
+          const hue = 42 + (i / bufferLength) * 10;
+          ctx.fillStyle = `hsl(${hue}, 95%, ${45 + (dataArray[i] / 255) * 40}%)`;
 
-          ctx.fillStyle = gradient;
-          
-          // Draw bar
           ctx.beginPath();
-          if (ctx.roundRect) {
-            ctx.roundRect(x, height - barHeight, barWidth - 2, barHeight, [4, 4, 0, 0]);
-          } else {
-            ctx.rect(x, height - barHeight, barWidth - 2, barHeight);
-          }
+          const barW = Math.max(2, barWidth - 2);
+          const r = Math.min(4, barW / 2);
+          const bx = x;
+          const by = height - barHeight;
+          ctx.moveTo(bx + r, by);
+          ctx.lineTo(bx + barW - r, by);
+          ctx.quadraticCurveTo(bx + barW, by, bx + barW, by + r);
+          ctx.lineTo(bx + barW, height);
+          ctx.lineTo(bx, height);
+          ctx.lineTo(bx, by + r);
+          ctx.quadraticCurveTo(bx, by, bx + r, by);
+          ctx.closePath();
           ctx.fill();
 
-          // Suble glow effect on high frequencies
-          if (i % 4 === 0 && dataArray[i] > 180) {
+          // Top glow on high peaks
+          if (dataArray[i] > 200) {
             ctx.shadowColor = '#facc15';
-            ctx.shadowBlur = 15;
-            ctx.fillStyle = '#facc15';
-            ctx.fillRect(x, height - barHeight - 4, barWidth - 2, 2);
-            ctx.shadowBlur = 0; // reset
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = 'rgba(250, 204, 21, 0.6)';
+            ctx.fillRect(bx, height - barHeight - 3, barW, 3);
+            ctx.shadowBlur = 0;
           }
 
           x += barWidth;
         }
       } else if (mode === 'wave') {
-        // --- RETRO SINE WAVE MODE ---
-        ctx.lineWidth = 3;
-        
-        // Draw 3 layers of waves for rich visual depth
-        const wavesCount = 3;
-        const colors = [
-          'rgba(250, 204, 21, 0.8)', // bright yellow
-          'rgba(245, 158, 11, 0.5)', // amber
-          'rgba(255, 255, 255, 0.3)', // white/gray
-        ];
-        
-        for (let w = 0; w < wavesCount; w++) {
-          ctx.strokeStyle = colors[w];
-          ctx.beginPath();
-          
-          const speed = (w + 1) * 0.3;
-          const shift = w * Math.PI * 0.5;
-
-          for (let i = 0; i < width; i++) {
-            // Map x coordinate to frequency bin index
-            const dataIndex = Math.min(
-              bufferLength - 1,
-              Math.floor((i / width) * bufferLength)
-            );
-            const amplitude = (dataArray[dataIndex] / 255) * 80 + 5;
-            
-            // Calculate wave y position
-            const angle = (i / width) * Math.PI * 4 + timeIndex * speed + shift;
-            const y = height / 2 + Math.sin(angle) * amplitude;
-
-            if (i === 0) {
-              ctx.moveTo(i, y);
-            } else {
-              ctx.lineTo(i, y);
-            }
-          }
-          ctx.stroke();
-        }
-      } else if (mode === 'pulsar') {
-        // --- CIRCULAR SPECTRUM / PULSAR MODE ---
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const baseRadius = Math.min(width, height) * 0.22;
-        
-        // Calculate average volume to pulse the center circle
-        let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
-        }
-        const average = sum / bufferLength;
-        const pulseScale = 1 + (average / 255) * 0.15;
-        const radius = baseRadius * pulseScale;
-
-        // Draw radial glowing background behind pulsar
-        const bgGlow = ctx.createRadialGradient(centerX, centerY, radius * 0.5, centerX, centerY, radius * 1.8);
-        bgGlow.addColorStop(0, 'rgba(250, 204, 21, 0.12)');
-        bgGlow.addColorStop(0.5, 'rgba(245, 158, 11, 0.05)');
-        bgGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = bgGlow;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius * 1.8, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Draw outer spectrum lines
-        const numPoints = 120;
+        // WAVE MODE - single clean wave with glow
         ctx.lineWidth = 2.5;
-        
-        for (let i = 0; i < numPoints; i++) {
-          const angle = (i / numPoints) * Math.PI * 2;
-          // Loop frequency indices
+        ctx.strokeStyle = '#facc15';
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+
+        for (let i = 0; i < width; i += 2) {
           const dataIndex = Math.min(
             bufferLength - 1,
-            Math.floor((Math.abs(numPoints / 2 - i) / (numPoints / 2)) * bufferLength)
+            Math.floor((i / width) * bufferLength)
           );
-          
-          const audioVal = dataArray[dataIndex];
-          const offset = (audioVal / 255) * 60;
-          
+          const amplitude = (dataArray[dataIndex] / 255) * height * 0.35 + 8;
+          const angle = (i / width) * Math.PI * 3 + timeIndex * 0.5;
+          const y = height / 2 + Math.sin(angle) * amplitude;
+
+          if (i === 0) ctx.moveTo(i, y);
+          else ctx.lineTo(i, y);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Second softer wave layer
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.3)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        for (let i = 0; i < width; i += 3) {
+          const dataIndex = Math.min(
+            bufferLength - 1,
+            Math.floor((i / width) * bufferLength)
+          );
+          const amplitude = ((dataArray[dataIndex] || 0) / 255) * height * 0.25 + 5;
+          const angle = (i / width) * Math.PI * 3 + timeIndex * 0.5 + 0.3;
+          const y = height / 2 + Math.sin(angle) * amplitude;
+          if (i === 0) ctx.moveTo(i, y);
+          else ctx.lineTo(i, y);
+        }
+        ctx.stroke();
+      } else if (mode === 'pulsar') {
+        // PULSAR MODE - clean circular spectrum
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const baseRadius = Math.min(width, height) * 0.2;
+
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+        const avg = sum / bufferLength;
+        const pulseScale = 1 + (avg / 255) * 0.12;
+        const radius = baseRadius * pulseScale;
+
+        // Background glow
+        const glow = ctx.createRadialGradient(centerX, centerY, radius * 0.3, centerX, centerY, radius * 2);
+        glow.addColorStop(0, 'rgba(250, 204, 21, 0.08)');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Outer spectrum ring
+        const numBars = Math.min(80, Math.floor(bufferLength * 0.6));
+        for (let i = 0; i < numBars; i++) {
+          const angle = (i / numBars) * Math.PI * 2 - Math.PI / 2;
+          const dataIndex = Math.floor((i / numBars) * bufferLength);
+          const val = dataArray[dataIndex] / 255;
+          const len = 4 + val * 40;
+
           const x1 = centerX + Math.cos(angle) * radius;
           const y1 = centerY + Math.sin(angle) * radius;
-          const x2 = centerX + Math.cos(angle) * (radius + offset);
-          const y2 = centerY + Math.sin(angle) * (radius + offset);
+          const x2 = centerX + Math.cos(angle) * (radius + len);
+          const y2 = centerY + Math.sin(angle) * (radius + len);
 
-          // Color gradient for the bars
-          const lineGrad = ctx.createLinearGradient(x1, y1, x2, y2);
-          lineGrad.addColorStop(0, 'rgba(250, 204, 21, 0.7)');
-          lineGrad.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
-          ctx.strokeStyle = lineGrad;
-
+          ctx.strokeStyle = `hsla(42, 100%, ${50 + val * 30}%, ${0.4 + val * 0.5})`;
+          ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(x1, y1);
           ctx.lineTo(x2, y2);
           ctx.stroke();
         }
 
-        // Draw a central vinyl circle representing a record spinner
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 20;
-        ctx.fillStyle = '#0f0f0f';
+        // Center disc
+        ctx.shadowColor = 'rgba(250, 204, 21, 0.3)';
+        ctx.shadowBlur = 25;
+        ctx.fillStyle = '#111';
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Draw groove lines on the central record
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        // Grooves
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
         ctx.lineWidth = 1;
-        for (let r = radius - 10; r > 10; r -= 12) {
+        for (let r = radius - 8; r > 8; r -= 10) {
           ctx.beginPath();
           ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
           ctx.stroke();
         }
 
-        // Draw record label center
+        // Center label
         ctx.fillStyle = '#facc15';
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius * 0.25, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, radius * 0.22, 0, Math.PI * 2);
         ctx.fill();
-        
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = '#000';
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius * 0.06, 0, Math.PI * 2);
         ctx.fill();
@@ -266,7 +263,16 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
     return () => {
       window.removeEventListener('resize', resizeCanvas);
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      // Cleanup AudioContext
+      if (audioCtx && audioCtx.state !== 'closed') {
+        audioCtx.close().catch(() => {});
+      }
+      analyserRef.current = null;
+      audioContextRef.current = null;
+      sourceRef.current = null;
     };
+    // We re-create AudioContext on every re-mount to avoid double-connect crashes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioRef, isPlaying, mode, hasVideoVisualizer]);
 
   if (hasVideoVisualizer) {
@@ -300,8 +306,7 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center">
-      {/* Canvas */}
-      <canvas ref={canvasRef} className="w-full h-full min-h-[320px] max-h-[80vh] rounded-[28px] bg-black/40 border border-white/5" />
+      <canvas ref={canvasRef} className="w-full h-full min-h-[320px] max-h-[80vh] rounded-[28px] bg-black border border-white/5" />
       {onClose && (
         <button
           onClick={onClose}
@@ -311,7 +316,6 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
         </button>
       )}
 
-      {/* Visualizer Mode Controls */}
       <div className="absolute top-4 flex items-center bg-black/85 backdrop-blur-xl border border-white/10 rounded-2xl p-1.5 gap-1.5 z-10 shadow-xl">
         <button
           type="button"

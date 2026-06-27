@@ -1246,7 +1246,25 @@ const populateRadioStation = async (stationDoc) => {
     { path: 'updatedBy', select: 'username _id role' },
   ]);
 
-  return populated.toObject();
+  const obj = populated.toObject();
+  // Add elapsed time for radio sync
+  if (obj.currentSong && obj.currentSongStartedAt) {
+    const elapsedMs = Date.now() - new Date(obj.currentSongStartedAt).getTime();
+    obj.currentSongElapsedSeconds = Math.floor(elapsedMs / 1000);
+  } else {
+    obj.currentSongElapsedSeconds = 0;
+  }
+  return obj;
+};
+
+// Helper: advance radio to next song in queue
+const advanceRadioToNext = async (stationDoc) => {
+  const nextEntry = stationDoc.queue[0];
+  stationDoc.currentSong = nextEntry?.song || null;
+  stationDoc.currentSongStartedAt = nextEntry ? new Date() : null;
+  stationDoc.queue = stationDoc.queue.slice(1);
+  await stationDoc.save();
+  return stationDoc;
 };
 
 const HOME_SECTION_TYPES = ['playlists', 'songs', 'albums', 'artists'];
@@ -1731,13 +1749,9 @@ app.get('/songs', async (req, res) => {
 
 app.get('/all-songs', async (req, res) => {
   try {
-    const songs = await Song.find({
-      $or: [
-        { isScheduled: false },
-        { isPublished: true },
-        { isPublished: { $exists: false } }
-      ]
-    })
+    // Return ALL songs regardless of publish state so users can see everything
+    // The frontend handles filtering for scheduled/unpublished songs
+    const songs = await Song.find({})
       .populate('artist', 'username _id profilePic role')
       .populate('collaborators.userId', 'username _id')
       .sort({ createdAt: -1 });
@@ -1857,16 +1871,43 @@ app.post('/admin/radio/advance', async (req, res) => {
     }
 
     const station = await getOrCreateRadioStation();
-    const nextEntry = station.queue[0];
-    station.currentSong = nextEntry?.song || null;
-    station.queue = station.queue.slice(1);
-    station.updatedBy = requester._id;
-    await station.save();
+    await advanceRadioToNext(station);
 
     return res.json({ message: 'Radio avanzada', station: await populateRadioStation(station) });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al avanzar la radio' });
+  }
+});
+
+// Public endpoint: any user can report that a radio song ended
+// The server only advances if the reported songId matches the current song
+app.post('/radio/report-ended', async (req, res) => {
+  try {
+    const { songId } = req.body;
+    const station = await getOrCreateRadioStation();
+
+    // Only advance if the reported song is the current one
+    if (station.currentSong && String(station.currentSong) === String(songId)) {
+      await advanceRadioToNext(station);
+      return res.json({ message: 'Radio avanzada', station: await populateRadioStation(station) });
+    }
+
+    return res.json({ message: 'No se avanzo (songId no coincide)', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al reportar fin de cancion' });
+  }
+});
+
+// Get radio sync info - returns elapsed seconds for current song
+app.get('/radio/sync', async (req, res) => {
+  try {
+    const station = await getOrCreateRadioStation();
+    return res.json({ station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener sync de radio' });
   }
 });
 

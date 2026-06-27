@@ -1598,7 +1598,7 @@ function App() {
 
   const fetchMySongs = async (artistId) => {
     try {
-      const res = await fetch(`${API_URL}/songs?artist=${artistId}`);
+      const res = await fetch(`${API_URL}/songs?artist=${artistId || user?._id}`);
       if (res.ok) {
         const dataRaw = await res.json();
         setMySongs(Array.isArray(dataRaw) ? dataRaw.map(normalizeSongEntity) : []);
@@ -1609,7 +1609,35 @@ function App() {
   };
 
   const handleSongEnd = () => {
+    const endedSongId = activeSongIdRef.current;
     flushPendingHistory({ completed: true });
+
+    // If radio mode, report the ended song to the server
+    if (playMode === 'radio' && endedSongId) {
+      fetch(`${API_URL}/radio/report-ended`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId: endedSongId }),
+      }).then((res) => res.json().catch(() => ({}))).then((data) => {
+        if (data?.station) {
+          const synced = normalizeRadioStation(data.station);
+          setRadioStation(synced);
+          const newSong = synced?.currentSong;
+          if (newSong?._id && String(newSong._id) !== String(endedSongId)) {
+            const newQueue = [
+              newSong,
+              ...(synced.queue || []).map((entry) => entry.song).filter((s) => s?._id && String(s._id) !== String(newSong._id)),
+            ].filter(Boolean);
+            playSong(newSong, 0, { queue: newQueue, mode: 'radio' });
+          } else {
+            setIsPlaying(false);
+          }
+        } else {
+          setIsPlaying(false);
+        }
+      }).catch(() => setIsPlaying(false));
+      return;
+    }
 
     if (!playQueue.length || !allSongs.length) {
       setIsPlaying(false);
@@ -1681,12 +1709,73 @@ function App() {
     }
   };
 
+  // Radio auto-sync: poll the server for the current song and sync elapsed time
+  const radioSyncRef = useRef(null);
+
+  const startRadioSync = () => {
+    if (radioSyncRef.current) clearInterval(radioSyncRef.current);
+    radioSyncRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/radio/sync`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.station) return;
+        const synced = normalizeRadioStation(data.station);
+        
+        setRadioStation(synced);
+
+        // If server switched current song, switch client playback too
+        const serverSongId = synced?.currentSong?._id;
+        const clientSongId = activeSongIdRef.current;
+        
+        if (serverSongId && serverSongId !== clientSongId && isRadioPlayback) {
+          // Server has a different song — switch to it
+          const newQueue = [
+            synced.currentSong,
+            ...(synced.queue || []).map((entry) => entry.song).filter((s) => s?._id && String(s._id) !== String(serverSongId)),
+          ].filter(Boolean);
+          
+          // Set elapsed time from server
+          const elapsedSec = synced.currentSongElapsedSeconds || 0;
+          
+          playSong(synced.currentSong, 0, { 
+            queue: newQueue, 
+            mode: 'radio',
+            startAtSeconds: elapsedSec,
+          });
+        } else if (!serverSongId && isRadioPlayback) {
+          // No current song on server - pause radio
+          setIsPlaying(false);
+          if (audioRef.current) audioRef.current.pause();
+        }
+      } catch (_) {}
+    }, 3000); // Poll every 3 seconds
+  };
+
+  const stopRadioSync = () => {
+    if (radioSyncRef.current) {
+      clearInterval(radioSyncRef.current);
+      radioSyncRef.current = null;
+    }
+  };
+
+  // Start/stop radio sync based on playMode
+  useEffect(() => {
+    if (playMode === 'radio' && radioStation?.currentSong?._id) {
+      startRadioSync();
+    } else {
+      stopRadioSync();
+    }
+    return () => stopRadioSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playMode, radioStation?.currentSong?._id]);
+
   const playRadioStation = () => {
     if (!radioQueueSongs.length) {
       showToast('La radio no tiene canciones cargadas', 'error');
       return;
     }
     playSong(radioQueueSongs[0], 0, { queue: radioQueueSongs, mode: 'radio' });
+    startRadioSync();
     showToast('Radio RTN en directo', 'success');
   };
 
@@ -2889,6 +2978,7 @@ function App() {
       duration={duration}
       audioRef={audioRef}
       onTimeUpdate={handlePlaybackTimeUpdate}
+      playMode={playMode}
       onDurationChange={(dur) => {
         setDuration(dur);
         const pending = Number(pendingResumeSecondsRef.current || 0);
