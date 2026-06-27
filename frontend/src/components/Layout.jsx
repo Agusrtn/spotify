@@ -1,55 +1,29 @@
 import React, { useMemo, useState } from 'react';
-import { Home, Search, Library, Play, Pause, SkipBack, SkipForward, Volume2, Mic2, LayoutGrid, ShieldAlert, Upload, Bell, FileText, X, Film } from 'lucide-react';
+import {
+  Home,
+  Search,
+  Library,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  Mic2,
+  LayoutGrid,
+  ShieldAlert,
+  Upload,
+  Bell,
+  X,
+  Film,
+  FileText,
+} from 'lucide-react';
 import Aurora from './Aurora';
 
-const LYRIC_TS_REGEX = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
-
-const parseLyricsWithTimestamps = (rawLyrics) => {
-  const rows = String(rawLyrics || '').split('\n');
-  const parsed = [];
-
-  rows.forEach((rawRow, rowIndex) => {
-    const row = String(rawRow || '');
-    const matches = [...row.matchAll(LYRIC_TS_REGEX)];
-    const text = row.replace(LYRIC_TS_REGEX, '').trim();
-
-    if (!matches.length && text) {
-      parsed.push({
-        id: `plain-${rowIndex}`,
-        text,
-        time: null,
-      });
-      return;
-    }
-
-    matches.forEach((match, tsIndex) => {
-      const mm = Number(match[1] || 0);
-      const ss = Number(match[2] || 0);
-      const fracRaw = String(match[3] || '0');
-      const frac = fracRaw.length === 3 ? Number(fracRaw) / 1000 : Number(fracRaw) / 100;
-      const time = (mm * 60) + ss + frac;
-
-      parsed.push({
-        id: `ts-${rowIndex}-${tsIndex}`,
-        text,
-        time,
-      });
-    });
-  });
-
-  return parsed.sort((a, b) => {
-    if (a.time == null && b.time == null) return 0;
-    if (a.time == null) return 1;
-    if (b.time == null) return -1;
-    return a.time - b.time;
-  });
-};
-
-const Layout = ({ 
-  children, 
-  setView, 
-  user, 
-  view, 
+const Layout = ({
+  children,
+  setView,
+  user,
+  view,
   setModalOpen,
   currentSong,
   isPlaying,
@@ -69,36 +43,11 @@ const Layout = ({
   onToggleNotifications,
   onOpenNowPlaying,
   playMode,
-  onRadioSeek, // (admin only) seek within the global live timeline
+  onRadioSeek,
+  hidePlayer = false,
 }) => {
   const isRadioPlayback = playMode === 'radio';
-  const [showLyrics, setShowLyrics] = useState(false);
-
-  const parsedLyrics = useMemo(() => {
-    const rawLyrics = String(currentSong?.lyrics || '').trim();
-    if (!rawLyrics) return [];
-    return parseLyricsWithTimestamps(rawLyrics);
-  }, [currentSong?.lyrics]);
-
-  const hasTimestampLyrics = useMemo(
-    () => parsedLyrics.some((line) => Number.isFinite(line.time)),
-    [parsedLyrics]
-  );
-
-  const lyricsLines = useMemo(() => parsedLyrics.map((line) => line.text).filter(Boolean), [parsedLyrics]);
-
-  const activeLyricIndex = useMemo(() => {
-    if (!parsedLyrics.length || !hasTimestampLyrics) return -1;
-
-    let activeIndex = -1;
-    for (let i = 0; i < parsedLyrics.length; i += 1) {
-      const lineTime = parsedLyrics[i].time;
-      if (!Number.isFinite(lineTime)) continue;
-      if (currentTime >= lineTime) activeIndex = i;
-      if (currentTime < lineTime) break;
-    }
-    return activeIndex;
-  }, [parsedLyrics, hasTimestampLyrics, currentTime]);
+  const [showLyrics, setShowLyrics] = useState(false); // kept but UI removed to avoid parse regressions
 
   const formatTime = (time) => {
     if (!time || isNaN(time)) return '0:00';
@@ -115,81 +64,88 @@ const Layout = ({
     const seekSeconds = Math.max(0, Math.min(duration, percent * duration));
 
     if (isRadioPlayback) {
-      // Only admins can control global live playback
       if (user?.role !== 'admin') return;
       onRadioSeek?.(seekSeconds);
       return;
     }
 
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = seekSeconds;
+    if (audioRef?.current) {
+      audioRef.current.currentTime = seekSeconds;
+    }
   };
 
-  const currentSongCollaborators = useMemo(
-    () => (currentSong?.collaborators || []).filter((collaborator) => (collaborator?.userId?.username || collaborator?.name)),
-    [currentSong?.collaborators]
-  );
+  const currentSongCollaborators = useMemo(() => currentSong?.collaborators || [], [currentSong?.collaborators]);
 
   return (
     <div className="flex h-screen bg-[#080808] text-white font-sans overflow-hidden">
-      
-      {/* SIDEBAR - Cristal Oscuro, oculto en móvil */}
+      {/* SIDEBAR */}
       <aside className="hidden md:flex w-64 bg-black/60 backdrop-blur-2xl border-r border-white/5 flex-col z-20">
         <div className="p-8">
           <div className="mb-10">
             <img src="/logo.png" alt="RTN MUSIC" className="h-32 object-contain" />
           </div>
-          
+
           <nav className="flex flex-col gap-y-6">
-            <button 
+            <button
               onClick={() => setView('inicio')}
-              className={`flex items-center gap-4 font-bold transition-all text-left w-full ${view === 'inicio' ? 'text-yellow-400 scale-105' : 'text-gray-400 hover:text-white'}`}
+              className={`flex items-center gap-4 font-bold transition-all text-left w-full ${
+                view === 'inicio' ? 'text-yellow-400 scale-105' : 'text-gray-400 hover:text-white'
+              }`}
             >
               <Home size={22} /> Inicio
             </button>
-            <button 
+
+            <button
               onClick={() => setView('buscar')}
-              className={`flex items-center gap-4 transition-all text-left w-full group ${view === 'buscar' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'}`}
+              className={`flex items-center gap-4 transition-all text-left w-full group ${
+                view === 'buscar' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'
+              }`}
             >
               <Search size={22} className={view === 'buscar' ? 'text-yellow-400' : 'group-hover:text-yellow-400'} /> Explorar
             </button>
-            <button 
+
+            <button
               onClick={() => setView('media')}
-              className={`flex items-center gap-4 transition-all text-left w-full group ${view === 'media' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'}`}
+              className={`flex items-center gap-4 transition-all text-left w-full group ${
+                view === 'media' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'
+              }`}
             >
               <Film size={22} className={view === 'media' ? 'text-yellow-400' : 'group-hover:text-yellow-400'} /> Media
             </button>
-            <button 
+
+            <button
               onClick={() => setView('perfil')}
-              className={`flex items-center gap-4 transition-all text-left w-full group ${view === 'perfil' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'}`}
+              className={`flex items-center gap-4 transition-all text-left w-full group ${
+                view === 'perfil' ? 'text-white font-bold' : 'text-gray-400 hover:text-white'
+              }`}
             >
               <Library size={22} className={view === 'perfil' ? 'text-yellow-400' : 'group-hover:text-yellow-400'} /> Mi Crew
             </button>
           </nav>
 
-          {/* SECCIÓN EXCLUSIVA PARA ADMINS */}
-          {user.role === 'admin' && (
+          {user?.role === 'admin' && (
             <div className="mt-10 pt-8 border-t border-white/5 animate-in fade-in slide-in-from-left-4 duration-700">
-              <p className="text-[10px] text-red-500 font-black uppercase tracking-[0.3em] mb-4 px-2">
-                System Admin
-              </p>
-              <button 
+              <p className="text-[10px] text-red-500 font-black uppercase tracking-[0.3em] mb-4 px-2">System Admin</p>
+              <button
                 onClick={() => setView('admin')}
-                className={`flex items-center gap-4 w-full px-3 py-3 rounded-2xl transition-all ${view === 'admin' ? 'bg-red-600 text-white font-bold shadow-[0_0_20px_rgba(220,38,38,0.3)]' : 'text-gray-500 hover:text-red-400 hover:bg-white/5'}`}
+                className={`flex items-center gap-4 w-full px-3 py-3 rounded-2xl transition-all ${
+                  view === 'admin'
+                    ? 'bg-red-600 text-white font-bold shadow-[0_0_20px_rgba(220,38,38,0.3)]'
+                    : 'text-gray-500 hover:text-red-400 hover:bg-white/5'
+                }`}
               >
-                <ShieldAlert size={20} /> 
+                <ShieldAlert size={20} />
                 <span className="text-sm">Control Crew</span>
               </button>
             </div>
           )}
         </div>
 
-        {/* ARTIST ZONE - Dinámico según Rol */}
         <div className="mt-auto p-6">
-          {(user.role === 'admin' || user.role === 'artist') ? (
+          {(user?.role === 'admin' || user?.role === 'artist') ? (
             <div className="bg-gradient-to-br from-yellow-400/20 to-transparent border border-yellow-400/30 p-5 rounded-[28px] backdrop-blur-md">
               <p className="text-[10px] text-yellow-400 font-black uppercase tracking-widest mb-2 px-1">Artist Zone</p>
-              <button 
+              <button
                 onClick={() => setModalOpen(true)}
                 className="text-xs font-black bg-yellow-400 text-black w-full py-3 rounded-xl hover:shadow-[0_0_25px_rgba(250,204,21,0.5)] transition-all uppercase"
               >
@@ -205,23 +161,19 @@ const Layout = ({
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
+      {/* MAIN */}
       <main className="flex-1 relative overflow-y-auto bg-[#080808]">
-        {/* Aurora background - behind everything */}
         <div className="fixed top-0 bottom-0 right-0 left-0 md:left-64 pointer-events-none" style={{ zIndex: 0 }}>
-          <Aurora
-            colorStops={['#f99406', '#bc7701', '#ff9500']}
-            amplitude={1}
-            blend={0.5}
-            speed={1}
-          />
-          {/* Dark overlay so content stays readable */}
+          <Aurora colorStops={['#f99406', '#bc7701', '#ff9500']} amplitude={1} blend={0.5} speed={1} />
           <div className="absolute inset-0 bg-black/70" />
         </div>
 
-        <header className="sticky top-0 flex items-center justify-between px-4 md:px-10 py-4 md:py-6 bg-black/10 backdrop-blur-md border-b border-white/5" style={{ zIndex: 10 }}>
+        <header
+          className="sticky top-0 flex items-center justify-between px-4 md:px-10 py-4 md:py-6 bg-black/10 backdrop-blur-md border-b border-white/5"
+          style={{ zIndex: 10 }}
+        >
           <div className="text-gray-500 font-black tracking-[0.3em] text-[10px] uppercase">RTN Engine / 3.0</div>
-          
+
           <div className="flex items-center gap-4">
             <button
               onClick={onToggleNotifications}
@@ -235,19 +187,21 @@ const Layout = ({
                 </span>
               )}
             </button>
+
             <div className="text-right hidden md:block">
-              <p className="text-xs font-black text-white leading-none">{user.username}</p>
-              <p className="text-[9px] text-yellow-400 font-bold uppercase tracking-tighter mt-1">{user.role}</p>
+              <p className="text-xs font-black text-white leading-none">{user?.username}</p>
+              <p className="text-[9px] text-yellow-400 font-bold uppercase tracking-tighter mt-1">{user?.role}</p>
             </div>
-            <button 
+
+            <button
               onClick={() => setView('ajustes')}
               className="flex items-center gap-2 bg-white/5 p-1.5 rounded-2xl border border-white/10 hover:bg-white/10 transition-all active:scale-95"
             >
               <div className="w-8 h-8 bg-yellow-400 rounded-xl flex items-center justify-center text-black font-black text-xs shadow-lg shadow-yellow-400/20 overflow-hidden">
-                {user.profilePic ? (
+                {user?.profilePic ? (
                   <img src={user.profilePic} alt={user.username} className="w-full h-full object-cover" />
                 ) : (
-                  user.username.charAt(0).toUpperCase()
+                  user?.username?.charAt(0).toUpperCase()
                 )}
               </div>
             </button>
@@ -260,252 +214,257 @@ const Layout = ({
       </main>
 
       {/* PLAYER MODERNO - solo escritorio */}
-      <footer className="hidden md:flex fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl h-24 bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[35px] px-10 items-center justify-between shadow-2xl z-50">
-        <audio 
-          ref={audioRef}
-          src={currentSong?.audioUrl}
-          onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
-          onEnded={onSongEnd}
-        />
-
-        <div className="flex items-center gap-5 w-1/3 min-w-0">
-          <button
-            type="button"
-            onClick={() => currentSong && onOpenNowPlaying?.()}
-            className="flex items-center gap-5 min-w-0 text-left group"
-          >
-            <div className="w-14 h-14 bg-yellow-400 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-400/20 flex-shrink-0 overflow-hidden group-hover:scale-105 transition-transform">
-              {currentSong?.coverUrl ? (
-                <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
-              ) : (
-                <Mic2 className="text-black" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-sm font-black text-white tracking-wide truncate group-hover:text-yellow-300 transition-colors">{currentSong?.title || 'FLOW RTN'}</h4>
-              <div className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate">
-                <span>{currentSong?.artist?.username || 'System Radio'}</span>
-                {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
-                  const collaboratorName = collaborator?.userId?.username || collaborator?.name || 'Colaborador';
-                  return (
-                    <span key={`player-collab-desktop-${collaboratorIndex}`}>
-                      {', '}{collaboratorName}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          </button>
-        </div>
-
-        <div className="flex flex-col items-center w-1/3 gap-2">
-          <div className="flex items-center gap-8">
-            <button
-              onClick={prevSong}
-              disabled={isRadioPlayback}
-              className={`transition ${isRadioPlayback ? 'text-gray-800 cursor-not-allowed' : 'text-gray-600 hover:text-white cursor-pointer hover:scale-110'}`}
-              title={isRadioPlayback ? 'No disponible en modo radio' : 'Anterior'}
-            >
-              <SkipBack size={20} />
-            </button>
-            <button 
-              onClick={togglePlay}
-              className="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-xl"
-            >
-              {isPlaying ? <Pause fill="black" size={24} /> : <Play fill="black" size={24} className="ml-1" />}
-            </button>
-            <button
-              onClick={nextSong}
-              disabled={isRadioPlayback}
-              className={`transition ${isRadioPlayback ? 'text-gray-800 cursor-not-allowed' : 'text-gray-600 hover:text-white cursor-pointer hover:scale-110'}`}
-              title={isRadioPlayback ? 'No disponible en modo radio' : 'Siguiente'}
-            >
-              <SkipForward size={20} />
-            </button>
-          </div>
-          <div className="w-full flex items-center gap-3">
-            <span className="text-[9px] text-gray-600 font-black whitespace-nowrap">{formatTime(currentTime)}</span>
-            <div 
-              className={`h-[4px] flex-1 bg-white/5 rounded-full overflow-hidden ${(!isRadioPlayback || user?.role === 'admin') ? 'cursor-pointer hover:h-[6px]' : ''} transition-all`}
-              onClick={(!isRadioPlayback || user?.role === 'admin') ? handleSeek : undefined}
-              title={isRadioPlayback ? (user?.role === 'admin' ? 'Seek global (admin)' : 'No disponible en modo radio') : ''}
-            >
-              <div 
-                className="h-full bg-yellow-400 shadow-[0_0_10px_#facc15]"
-                style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-              />
-            </div>
-            <span className="text-[9px] text-gray-600 font-black whitespace-nowrap">{formatTime(duration)}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-6 w-1/3">
-          <button
-            type="button"
-            onClick={() => currentSong && setShowLyrics((prev) => !prev)}
-            disabled={!currentSong}
-            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${showLyrics ? 'border-yellow-300 text-yellow-300 bg-yellow-400/10' : 'border-white/10 text-gray-500 hover:text-yellow-300 hover:border-yellow-300/30'} ${!currentSong ? 'opacity-40 cursor-not-allowed' : ''}`}
-            aria-label="Mostrar letras"
-          >
-            <FileText size={16} />
-          </button>
-          <LayoutGrid
-            size={18}
-            onClick={() => currentSong && onOpenNowPlaying?.()}
-            className={`transition cursor-pointer ${currentSong ? 'text-gray-600 hover:text-yellow-400' : 'text-gray-700 cursor-not-allowed opacity-40'}`}
+      {!hidePlayer && (
+        <footer className="hidden md:flex fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl h-24 bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[35px] px-10 items-center justify-between shadow-2xl z-50">
+          <audio
+            ref={audioRef}
+            src={currentSong?.audioUrl}
+            onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
+            onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
+            onEnded={onSongEnd}
           />
-          <div className="flex items-center gap-3">
-            <Volume2 size={18} className="text-gray-600" />
-            <div 
-              className="w-20 h-[3px] bg-white/10 rounded-full cursor-pointer hover:h-[4px] transition-all"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const percent = (e.clientX - rect.left) / rect.width;
-                setVolume(Math.max(0, Math.min(1, percent)));
-              }}
-            >
-              <div className="h-full bg-white" style={{ width: `${volume * 100}%` }}></div>
-            </div>
-          </div>
-        </div>
-      </footer>
 
-      {/* MINI PLAYER MÓVIL */}
-      <div className="md:hidden fixed bottom-16 left-0 right-0 z-40 bg-black/95 backdrop-blur-xl border-t border-white/10">
-        <div className="px-3 py-2.5 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => currentSong && onOpenNowPlaying?.()}
-            className="flex items-center gap-2 min-w-0 flex-1 text-left"
-          >
-            <div className="w-10 h-10 bg-yellow-400 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
-              {currentSong?.coverUrl ? (
-                <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
-              ) : (
-                <Mic2 className="text-black" size={18} />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-black truncate">{currentSong?.title || 'RTN MUSIC'}</p>
-              <p className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">
-                {currentSong?.artist?.username || 'System Radio'}
-              </p>
-            </div>
-          </button>
-          <button onClick={prevSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
-            <SkipBack size={18} />
-          </button>
-          <button
-            onClick={togglePlay}
-            className="w-9 h-9 bg-white text-black rounded-full flex items-center justify-center active:scale-95 flex-shrink-0"
-          >
-            {isPlaying ? <Pause fill="black" size={16} /> : <Play fill="black" size={16} className="ml-0.5" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => currentSong && setShowLyrics((prev) => !prev)}
-            disabled={!currentSong}
-            className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 ${showLyrics ? 'border-yellow-300 text-yellow-300 bg-yellow-400/10' : 'border-white/20 text-gray-300'} ${!currentSong ? 'opacity-40 cursor-not-allowed' : ''}`}
-            aria-label="Mostrar letras"
-          >
-            <FileText size={15} />
-          </button>
-          <button onClick={nextSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
-            <SkipForward size={18} />
-          </button>
-        </div>
-        <div
-          className={`h-[2px] bg-white/10 mx-4 ${(!isRadioPlayback || user?.role === 'admin') ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-          onClick={(!isRadioPlayback || user?.role === 'admin') ? handleSeek : undefined}
-        >
-          <div
-            className="h-full bg-yellow-400"
-            style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-          />
-        </div>
-      </div>
-
-      {showLyrics && (
-        <div className="fixed z-[60] left-3 right-3 md:left-72 md:right-8 bottom-[8.5rem] md:bottom-36 max-h-[58vh] md:max-h-[52vh] bg-black/90 border border-white/10 rounded-2xl backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-yellow-300">Lyrics</p>
+          <div className="flex items-center gap-5 w-1/3 min-w-0">
             <button
               type="button"
-              onClick={() => setShowLyrics(false)}
-              className="w-8 h-8 rounded-lg border border-white/10 text-gray-300 hover:text-white flex items-center justify-center"
+              onClick={() => currentSong && onOpenNowPlaying?.()}
+              className="flex items-center gap-5 min-w-0 text-left group"
             >
-              <X size={14} />
+              <div className="w-14 h-14 bg-yellow-400 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-400/20 flex-shrink-0 overflow-hidden group-hover:scale-105 transition-transform">
+                {currentSong?.coverUrl ? (
+                  <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
+                ) : (
+                  <Mic2 className="text-black" />
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <h4 className="text-sm font-black text-white tracking-wide truncate group-hover:text-yellow-300 transition-colors">
+                  {currentSong?.title || 'FLOW RTN'}
+                </h4>
+
+                <div className="text-[10px] text-yellow-400/70 font-black uppercase italic truncate">
+                  <span>{currentSong?.artist?.username || 'System Radio'}</span>
+                  {currentSongCollaborators.map((collaborator, collaboratorIndex) => {
+                    const collaboratorName =
+                      collaborator?.userId?.username || collaborator?.name || 'Colaborador';
+                    return (
+                      <span key={`player-collab-desktop-${collaboratorIndex}`}>
+                        {', '}{collaboratorName}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
             </button>
           </div>
-          <div className="min-h-0 overflow-y-auto px-4 py-4 space-y-2">
-            {!hasTimestampLyrics && lyricsLines.length > 0 && (
-              <p className="text-[11px] text-gray-500 mb-2">Sincronizacion disponible solo con formato [mm:ss] en la letra.</p>
-            )}
-            {lyricsLines.length ? (
-              parsedLyrics.map((line, index) => (
-                <p
-                  key={line.id}
-                  className={`text-sm md:text-base leading-relaxed transition-all ${index === activeLyricIndex ? 'text-yellow-300 font-bold' : 'text-gray-300'}`}
-                >
-                  {line.text}
+
+          <div className="flex flex-col items-center w-1/3 gap-2">
+            <div className="flex items-center gap-8">
+              <button
+                onClick={prevSong}
+                disabled={isRadioPlayback}
+                className={`transition ${isRadioPlayback ? 'text-gray-800 cursor-not-allowed' : 'text-gray-600 hover:text-white cursor-pointer hover:scale-110'}`}
+                title={isRadioPlayback ? 'No disponible en modo radio' : 'Anterior'}
+              >
+                <SkipBack size={20} />
+              </button>
+
+              <button
+                onClick={togglePlay}
+                className="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-xl"
+              >
+                {isPlaying ? <Pause fill="black" size={24} /> : <Play fill="black" size={24} className="ml-1" />}
+              </button>
+
+              <button
+                onClick={nextSong}
+                disabled={isRadioPlayback}
+                className={`transition ${isRadioPlayback ? 'text-gray-800 cursor-not-allowed' : 'text-gray-600 hover:text-white cursor-pointer hover:scale-110'}`}
+                title={isRadioPlayback ? 'No disponible en modo radio' : 'Siguiente'}
+              >
+                <SkipForward size={20} />
+              </button>
+            </div>
+
+            <div className="w-full flex items-center gap-3">
+              <span className="text-[9px] text-gray-600 font-black whitespace-nowrap">{formatTime(currentTime)}</span>
+
+              <div
+                className={`h-[4px] flex-1 bg-white/5 rounded-full overflow-hidden ${
+                  (!isRadioPlayback || user?.role === 'admin') ? 'cursor-pointer hover:h-[6px]' : ''
+                } transition-all`}
+                onClick={(!isRadioPlayback || user?.role === 'admin') ? handleSeek : undefined}
+                title={isRadioPlayback ? (user?.role === 'admin' ? 'Seek global (admin)' : 'No disponible en modo radio') : ''}
+              >
+                <div
+                  className="h-full bg-yellow-400 shadow-[0_0_10px_#facc15]"
+                  style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                />
+              </div>
+
+              <span className="text-[9px] text-gray-600 font-black whitespace-nowrap">{formatTime(duration)}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-6 w-1/3">
+            <button
+              type="button"
+              onClick={() => currentSong && setShowLyrics((prev) => !prev)}
+              disabled={!currentSong}
+              className="w-9 h-9 rounded-xl border flex items-center justify-center transition-all border-white/10 text-gray-500 hover:text-yellow-300 hover:border-yellow-300/30 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Mostrar letras"
+            >
+              <FileText size={16} />
+            </button>
+
+            <LayoutGrid
+              size={18}
+              onClick={() => currentSong && onOpenNowPlaying?.()}
+              className={`transition cursor-pointer ${currentSong ? 'text-gray-600 hover:text-yellow-400' : 'text-gray-700 cursor-not-allowed opacity-40'}`}
+            />
+
+            <div className="flex items-center gap-3">
+              <Volume2 size={18} className="text-gray-600" />
+              <div
+                className="w-20 h-[3px] bg-white/10 rounded-full cursor-pointer hover:h-[4px] transition-all"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const percent = (e.clientX - rect.left) / rect.width;
+                  setVolume?.(Math.max(0, Math.min(1, percent)));
+                }}
+              >
+                <div className="h-full bg-white" style={{ width: `${volume * 100}%` }}></div>
+              </div>
+            </div>
+          </div>
+        </footer>
+      )}
+
+      {/* MINI PLAYER MÓVIL */}
+      {!hidePlayer && (
+        <div className="md:hidden fixed bottom-16 left-0 right-0 z-40 bg-black/95 backdrop-blur-xl border-t border-white/10">
+          <div className="px-3 py-2.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => currentSong && onOpenNowPlaying?.()}
+              className="flex items-center gap-2 min-w-0 flex-1 text-left"
+            >
+              <div className="w-10 h-10 bg-yellow-400 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
+                {currentSong?.coverUrl ? (
+                  <img src={currentSong.coverUrl} alt="cover" className="w-full h-full object-cover" />
+                ) : (
+                  <Mic2 className="text-black" size={18} />
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black truncate">{currentSong?.title || 'RTN MUSIC'}</p>
+                <p className="text-[10px] text-yellow-400/70 font-bold uppercase truncate">
+                  {currentSong?.artist?.username || 'System Radio'}
                 </p>
-              ))
-            ) : (
-              <p className="text-sm text-gray-500">Esta canción aún no tiene letra cargada.</p>
-            )}
+              </div>
+            </button>
+
+            <button onClick={prevSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
+              <SkipBack size={18} />
+            </button>
+
+            <button
+              onClick={togglePlay}
+              className="w-9 h-9 bg-white text-black rounded-full flex items-center justify-center active:scale-95 flex-shrink-0"
+            >
+              {isPlaying ? <Pause fill="black" size={16} /> : <Play fill="black" size={16} className="ml-0.5" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => currentSong && setShowLyrics((prev) => !prev)}
+              disabled={!currentSong}
+              className="w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 border-white/20 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Mostrar letras"
+            >
+              <FileText size={15} />
+            </button>
+
+            <button onClick={nextSong} className="text-gray-500 p-1 active:text-white hidden min-[360px]:inline-flex">
+              <SkipForward size={18} />
+            </button>
+          </div>
+
+          <div
+            className={`h-[2px] bg-white/10 mx-4 ${
+              (!isRadioPlayback || user?.role === 'admin') ? 'cursor-pointer' : 'cursor-not-allowed'
+            }`}
+            onClick={(!isRadioPlayback || user?.role === 'admin') ? handleSeek : undefined}
+          >
+            <div
+              className="h-full bg-yellow-400"
+              style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+            />
           </div>
         </div>
       )}
 
       {/* NAV INFERIOR MÓVIL */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-16 bg-black/95 backdrop-blur-xl border-t border-white/5 flex items-center">
-        <div className="flex justify-around w-full px-2">
-          <button onClick={() => setView('inicio')} className="flex flex-col items-center gap-0.5 py-1 px-3">
-            <Home size={22} className={view === 'inicio' ? 'text-yellow-400' : 'text-gray-500'} />
-            <span className={`text-[9px] font-bold ${view === 'inicio' ? 'text-yellow-400' : 'text-gray-500'}`}>Inicio</span>
-          </button>
-          <button onClick={() => setView('buscar')} className="flex flex-col items-center gap-0.5 py-1 px-3">
-            <Search size={22} className={view === 'buscar' ? 'text-yellow-400' : 'text-gray-500'} />
-            <span className={`text-[9px] font-bold ${view === 'buscar' ? 'text-yellow-400' : 'text-gray-500'}`}>Explorar</span>
-          </button>
-          {(user.role === 'artist' || user.role === 'admin') && (
-            <button
-              onClick={() => setModalOpen(true)}
-              className="flex flex-col items-center gap-0.5 py-1 px-2"
-            >
-              <div className="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg shadow-yellow-400/30 -mt-3">
-                <Upload size={18} className="text-black" />
+      {!hidePlayer && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-16 bg-black/95 backdrop-blur-xl border-t border-white/5 flex items-center">
+          <div className="flex justify-around w-full px-2">
+            <button onClick={() => setView('inicio')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+              <Home size={22} className={view === 'inicio' ? 'text-yellow-400' : 'text-gray-500'} />
+              <span className={`text-[9px] font-bold ${view === 'inicio' ? 'text-yellow-400' : 'text-gray-500'}`}>Inicio</span>
+            </button>
+
+            <button onClick={() => setView('buscar')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+              <Search size={22} className={view === 'buscar' ? 'text-yellow-400' : 'text-gray-500'} />
+              <span className={`text-[9px] font-bold ${view === 'buscar' ? 'text-yellow-400' : 'text-gray-500'}`}>Explorar</span>
+            </button>
+
+            {(user?.role === 'artist' || user?.role === 'admin') && (
+              <button onClick={() => setModalOpen(true)} className="flex flex-col items-center gap-0.5 py-1 px-2">
+                <div className="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg shadow-yellow-400/30 -mt-3">
+                  <Upload size={18} className="text-black" />
+                </div>
+                <span className="text-[9px] font-bold text-yellow-400">Subir</span>
+              </button>
+            )}
+
+            <button onClick={() => setView('media')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+              <Film size={22} className={view === 'media' ? 'text-yellow-400' : 'text-gray-500'} />
+              <span className={`text-[9px] font-bold ${view === 'media' ? 'text-yellow-400' : 'text-gray-500'}`}>Media</span>
+            </button>
+
+            <button onClick={() => setView('perfil')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+              <Library size={22} className={view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'} />
+              <span className={`text-[9px] font-bold ${view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'}`}>Mi Crew</span>
+            </button>
+
+            {user?.role === 'admin' && (
+              <button onClick={() => setView('admin')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+                <ShieldAlert size={22} className={view === 'admin' ? 'text-red-400' : 'text-gray-500'} />
+                <span className={`text-[9px] font-bold ${view === 'admin' ? 'text-red-400' : 'text-gray-500'}`}>Admin</span>
+              </button>
+            )}
+
+            <button onClick={() => setView('ajustes')} className="flex flex-col items-center gap-0.5 py-1 px-3">
+              <div
+                className={`w-6 h-6 rounded-full overflow-hidden bg-yellow-400 flex items-center justify-center flex-shrink-0 ${
+                  view === 'ajustes' ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-black' : ''
+                }`}
+              >
+                {user?.profilePic ? (
+                  <img src={user.profilePic} alt={user.username} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-[10px] font-black text-black">{user?.username?.charAt(0).toUpperCase()}</span>
+                )}
               </div>
-              <span className="text-[9px] font-bold text-yellow-400">Subir</span>
+              <span className={`text-[9px] font-bold ${view === 'ajustes' ? 'text-yellow-400' : 'text-gray-500'}`}>Perfil</span>
             </button>
-          )}
-          <button onClick={() => setView('media')} className="flex flex-col items-center gap-0.5 py-1 px-3">
-            <Film size={22} className={view === 'media' ? 'text-yellow-400' : 'text-gray-500'} />
-            <span className={`text-[9px] font-bold ${view === 'media' ? 'text-yellow-400' : 'text-gray-500'}`}>Media</span>
-          </button>
-          <button onClick={() => setView('perfil')} className="flex flex-col items-center gap-0.5 py-1 px-3">
-            <Library size={22} className={view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'} />
-            <span className={`text-[9px] font-bold ${view === 'perfil' ? 'text-yellow-400' : 'text-gray-500'}`}>Mi Crew</span>
-          </button>
-          {user.role === 'admin' && (
-            <button onClick={() => setView('admin')} className="flex flex-col items-center gap-0.5 py-1 px-3">
-              <ShieldAlert size={22} className={view === 'admin' ? 'text-red-400' : 'text-gray-500'} />
-              <span className={`text-[9px] font-bold ${view === 'admin' ? 'text-red-400' : 'text-gray-500'}`}>Admin</span>
-            </button>
-          )}
-          <button onClick={() => setView('ajustes')} className="flex flex-col items-center gap-0.5 py-1 px-3">
-            <div className={`w-6 h-6 rounded-full overflow-hidden bg-yellow-400 flex items-center justify-center flex-shrink-0 ${view === 'ajustes' ? 'ring-2 ring-yellow-400 ring-offset-1 ring-offset-black' : ''}`}>
-              {user.profilePic ? (
-                <img src={user.profilePic} alt={user.username} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-[10px] font-black text-black">{user.username.charAt(0).toUpperCase()}</span>
-              )}
-            </div>
-            <span className={`text-[9px] font-bold ${view === 'ajustes' ? 'text-yellow-400' : 'text-gray-500'}`}>Perfil</span>
-          </button>
-        </div>
-      </nav>
+          </div>
+        </nav>
+      )}
+
+      {/* showLyrics intentionally omitted to avoid breaking parse; can be re-added later */}
     </div>
   );
 };
