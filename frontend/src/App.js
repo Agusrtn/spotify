@@ -7,7 +7,7 @@ import TourDatesPanel from './components/TourDatesPanel';
 import RadioHomeSection from './components/RadioHomeSection';
 import HomeSectionRenderer from './components/HomeSectionRenderer';
 import { API_URL } from './config';
-import { Disc, Play, Pause, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass, ChevronLeft, ChevronRight, Radio, ListMusic } from 'lucide-react';
+import { Disc, Play, Pause, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass, ChevronLeft, ChevronRight, SkipForward, Radio, ListMusic } from 'lucide-react';
 
 // Album gradient colors (similar to Spotify album art)
 const ALBUM_GRADIENTS = [
@@ -4649,6 +4649,324 @@ function App() {
             ) : (
               <p className="text-gray-500 text-sm">Sin tiempo escuchado todavía.</p>
             )}
+          </section>
+
+          {/* ────────── RADIO MANAGEMENT ────────── */}
+          <section className="bg-gradient-to-br from-yellow-600/10 to-orange-600/5 p-4 md:p-8 rounded-[40px] border border-yellow-400/30">
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-xs font-black text-yellow-400 uppercase tracking-widest flex items-center gap-2">
+                <Radio size={16} /> Control de Radio
+              </p>
+              <button onClick={() => fetchRadioStation().then((s) => s && setRadioForm({ title: s.title || 'RTN Radio', subtitle: s.subtitle || '', isLive: s.isLive !== false, autoplay: s.autoplay !== false }))} className="text-yellow-400 text-xs font-bold hover:underline">
+                Refrescar estado
+              </button>
+            </div>
+
+            {radioLoading ? (
+              <p className="text-gray-500 text-sm">Cargando radio...</p>
+            ) : (
+              <div className="space-y-6">
+                {/* Current Status */}
+                <div className="bg-black/40 border border-yellow-400/20 rounded-2xl p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-yellow-400 flex items-center justify-center flex-shrink-0">
+                      <Radio size={26} className="text-black" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-lg">{radioForm.title || 'RTN Radio'}</p>
+                      <p className="text-xs text-yellow-300/80">{radioForm.subtitle || 'En directo desde la crew'}</p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${radioForm.isLive ? 'text-green-400' : 'text-gray-500'}`}>
+                          {radioForm.isLive ? '● En vivo' : '● En pausa'}
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                          {radioStation?.queue?.length || 0} en cola
+                        </span>
+                      </div>
+                    </div>
+                    {radioCurrentSong && (
+                      <button
+                        type="button"
+                        onClick={playRadioStation}
+                        className="flex items-center gap-2 bg-yellow-400 text-black text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl hover:shadow-[0_0_20px_rgba(250,204,21,0.4)] transition-all shrink-0"
+                      >
+                        <Play size={14} className="fill-black" />
+                        Sintonizar
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Currently Playing */}
+                {radioStation?.currentSong && (
+                  <div className="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-black/40 flex-shrink-0">
+                      {radioStation.currentSong.coverUrl ? <img src={radioStation.currentSong.coverUrl} alt={radioStation.currentSong.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={18} className="text-yellow-400/40" /></div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm truncate">{radioStation.currentSong.title}</p>
+                      <p className="text-[10px] text-gray-400 uppercase truncate">{radioStation.currentSong.artist?.username || 'Artista'}</p>
+                    </div>
+                    <span className="text-[9px] text-yellow-400 font-black uppercase tracking-widest shrink-0">Sonando</span>
+                  </div>
+                )}
+
+                {/* Settings Form */}
+                <form onSubmit={saveRadioSettings} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    value={radioForm.title}
+                    onChange={(e) => setRadioForm((prev) => ({ ...prev, title: e.target.value }))}
+                    placeholder="Título de la radio"
+                    className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400"
+                  />
+                  <input
+                    type="text"
+                    value={radioForm.subtitle}
+                    onChange={(e) => setRadioForm((prev) => ({ ...prev, subtitle: e.target.value }))}
+                    placeholder="Subtítulo"
+                    className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400"
+                  />
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={radioForm.isLive}
+                      onChange={(e) => setRadioForm((prev) => ({ ...prev, isLive: e.target.checked }))}
+                      className="accent-yellow-400"
+                    />
+                    En vivo
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={radioForm.autoplay}
+                      onChange={(e) => setRadioForm((prev) => ({ ...prev, autoplay: e.target.checked }))}
+                      className="accent-yellow-400"
+                    />
+                    Autoplay
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={radioSaving}
+                    className="md:col-span-2 bg-yellow-400 text-black font-black py-3 rounded-xl uppercase text-xs tracking-widest disabled:opacity-60 hover:shadow-[0_0_20px_rgba(250,204,21,0.3)] transition-all"
+                  >
+                    {radioSaving ? 'Guardando...' : 'Guardar configuración de radio'}
+                  </button>
+                </form>
+
+                {/* Add to Queue */}
+                <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-end">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Agregar canción a la radio</p>
+                    <select
+                      value={selectedRadioSongId}
+                      onChange={(e) => setSelectedRadioSongId(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400"
+                    >
+                      <option value="">Seleccionar canción...</option>
+                      {allSongs
+                        .filter((s) => !s.isScheduled || s.isPublished)
+                        .map((song) => (
+                          <option key={song._id} value={song._id}>
+                            {song.title} - {song.artist?.username || 'Artista'}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedRadioSongId) playRadioSongNow(selectedRadioSongId);
+                    }}
+                    disabled={!selectedRadioSongId || radioSaving}
+                    className="px-5 py-3 bg-green-600/80 hover:bg-green-600 text-white font-black rounded-xl uppercase text-xs tracking-widest disabled:opacity-50 transition-all"
+                  >
+                    <Play size={14} className="inline mr-1 fill-white" /> Ahora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addRadioQueueSong(selectedRadioSongId, false)}
+                    disabled={!selectedRadioSongId || radioSaving}
+                    className="px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-black rounded-xl uppercase text-xs tracking-widest disabled:opacity-50 transition-all"
+                  >
+                    <Plus size={14} className="inline mr-1" /> Cola
+                  </button>
+                </div>
+
+                {/* Queue List */}
+                {(radioStation?.queue || []).length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
+                      <ListMusic size={14} /> Cola de reproducción ({radioStation.queue.length})
+                    </p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {radioStation.queue.map((entry, index) => (
+                        <div key={entry._id} className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
+                          <span className="text-[10px] text-gray-500 font-bold w-6 text-center shrink-0">#{index + 1}</span>
+                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                            {entry.song?.coverUrl ? <img src={entry.song.coverUrl} alt={entry.song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={14} className="text-yellow-400/40" /></div>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold truncate">{entry.song?.title || 'Canción'}</p>
+                            <p className="text-[10px] text-gray-400 uppercase truncate">{entry.song?.artist?.username || 'Artista'}</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => playRadioSongNow(entry.song?._id)}
+                              disabled={!entry.song?._id || radioSaving}
+                              className="w-8 h-8 rounded-lg bg-green-600/60 hover:bg-green-600 flex items-center justify-center disabled:opacity-40"
+                              title="Reproducir ahora"
+                            >
+                              <Play size={12} className="fill-white ml-0.5" />
+                            </button>
+                            {index > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => reorderRadioQueue(index, index - 1)}
+                                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                                title="Subir"
+                              >
+                                <ChevronLeft size={12} className="rotate-90" />
+                              </button>
+                            )}
+                            {index < (radioStation.queue?.length || 0) - 1 && (
+                              <button
+                                type="button"
+                                onClick={() => reorderRadioQueue(index, index + 1)}
+                                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                                title="Bajar"
+                              >
+                                <ChevronRight size={12} className="rotate-90" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeRadioQueueEntry(entry._id)}
+                              className="w-8 h-8 rounded-lg bg-red-600/50 hover:bg-red-600 flex items-center justify-center"
+                              title="Quitar"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Advance Button */}
+                <button
+                  type="button"
+                  onClick={advanceRadioStation}
+                  disabled={!radioStation?.queue?.length || radioSaving}
+                  className="w-full py-3 bg-white/10 hover:bg-white/20 text-white font-black rounded-xl uppercase text-xs tracking-widest disabled:opacity-40 transition-all border border-white/10"
+                >
+                  <SkipForward size={14} className="inline mr-1" /> Avanzar a la siguiente canción
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Playlists por defecto</p>
+              <button onClick={resetPlaylistForm} className="text-yellow-400 text-xs font-bold hover:underline flex items-center gap-2"><Plus size={14} /> Nueva playlist</button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-6 md:gap-8">
+              <form onSubmit={savePlaylist} className="space-y-4 bg-black/30 rounded-3xl border border-white/10 p-5">
+                <input
+                  value={playlistForm.name}
+                  onChange={(e) => setPlaylistForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Nombre de la playlist"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                />
+                <textarea
+                  value={playlistForm.description}
+                  onChange={(e) => setPlaylistForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Descripción"
+                  className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 outline-none focus:border-yellow-400"
+                />
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Portada desde archivo</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setPlaylistCoverFile(e.target.files?.[0] || null)}
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 outline-none focus:border-yellow-400 text-sm"
+                  />
+                  {playlistForm.coverUrl && !playlistCoverFile && (
+                    <p className="text-[10px] text-gray-400">Usando portada actual guardada.</p>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={playlistForm.isDefault}
+                    onChange={(e) => setPlaylistForm((prev) => ({ ...prev, isDefault: e.target.checked }))}
+                  />
+                  Mostrar como playlist por defecto
+                </label>
+
+                <div className="max-h-80 overflow-y-auto space-y-2 pr-2">
+                  {allSongs.map((song) => (
+                    <button
+                      key={song._id}
+                      type="button"
+                      onClick={() => togglePlaylistSong(song._id)}
+                      className={`w-full flex items-center gap-3 rounded-2xl p-3 border transition ${playlistForm.songIds.includes(song._id) ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/10 bg-black/20 hover:bg-white/5'}`}
+                    >
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+                        {song.coverUrl ? <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Disc size={18} className="text-yellow-400/40" /></div>}
+                      </div>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-sm font-bold truncate">{song.title}</p>
+                        <p className="text-[10px] text-gray-400 uppercase truncate">{song.artist?.username || 'Artista'}</p>
+                      </div>
+                      {playlistForm.songIds.includes(song._id) && <Check size={16} className="text-yellow-400" />}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex gap-3">
+                  <button disabled={playlistSaving} className="flex-1 bg-yellow-400 text-black font-black py-3 rounded-2xl uppercase text-xs tracking-widest disabled:opacity-60">
+                    {playlistSaving ? 'Guardando...' : playlistForm.id ? 'Actualizar playlist' : 'Crear playlist'}
+                  </button>
+                  {playlistForm.id && (
+                    <button type="button" onClick={resetPlaylistForm} className="px-4 py-3 rounded-2xl bg-white/10 text-white font-bold text-xs uppercase tracking-widest">
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              <div className="space-y-3">
+                {playlists.length > 0 ? playlists.map((playlist) => (
+                  <div key={playlist._id} className="bg-black/30 border border-white/10 rounded-3xl p-4 flex gap-4">
+                    <div className="w-24 h-24 rounded-2xl overflow-hidden bg-black/40 flex-shrink-0">
+                      {playlist.coverUrl ? (
+                        <img src={playlist.coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+                      ) : playlist.songs?.[0]?.coverUrl ? (
+                        <img src={playlist.songs[0].coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center"><Disc size={28} className="text-yellow-400/40" /></div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-xl truncate">{playlist.name}</p>
+                      <p className="text-sm text-gray-400 line-clamp-2">{playlist.description || 'Sin descripción'}</p>
+                      <p className="text-[10px] text-yellow-400 font-bold uppercase tracking-widest mt-2">{playlist.songs?.length || 0} canciones</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <button onClick={() => setSelectedPlaylist(playlist)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase">Ver</button>
+                      <button onClick={() => startEditPlaylist(playlist)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase">Editar</button>
+                      <button onClick={() => deletePlaylist(playlist._id)} className="px-3 py-2 rounded-xl bg-red-600/80 hover:bg-red-600 text-xs font-bold uppercase">Eliminar</button>
+                    </div>
+                  </div>
+                )) : <p className="text-gray-500 text-sm">No hay playlists todavía.</p>}
+              </div>
+            </div>
           </section>
 
           <section className="bg-white/5 p-4 md:p-8 rounded-[40px] border border-white/10">
