@@ -5,7 +5,7 @@ import NowPlayingView from './components/NowPlayingView';
 import ShareModal from './components/ShareModal';
 import TourDatesPanel from './components/TourDatesPanel';
 import { API_URL } from './config';
-import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Disc, Play, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass, ChevronLeft, ChevronRight, Radio, ListMusic } from 'lucide-react';
 
 // Album gradient colors (similar to Spotify album art)
 const ALBUM_GRADIENTS = [
@@ -270,6 +270,43 @@ const normalizeAlbumEntity = (album) => {
   };
 };
 
+const normalizeRadioStation = (station) => {
+  if (!station) return null;
+  return {
+    ...station,
+    currentSong: normalizeSongEntity(station.currentSong),
+    queue: Array.isArray(station.queue)
+      ? station.queue.map((entry) => ({
+        ...entry,
+        song: normalizeSongEntity(entry.song),
+      })).filter((entry) => entry.song?._id)
+      : [],
+  };
+};
+
+const normalizeHomeSection = (section) => {
+  if (!section) return null;
+  const type = section.type || 'playlists';
+  const normalizer = type === 'songs'
+    ? normalizeSongEntity
+    : type === 'albums'
+      ? normalizeAlbumEntity
+      : type === 'artists'
+        ? normalizeArtistEntity
+        : normalizePlaylistEntity;
+  const items = Array.isArray(section.items) ? section.items.map(normalizer).filter(Boolean) : [];
+
+  return {
+    ...section,
+    type,
+    layout: section.layout || 'carousel',
+    itemIds: Array.isArray(section.itemIds)
+      ? section.itemIds.map((id) => String(id?._id || id))
+      : items.map((item) => String(item?._id || '')).filter(Boolean),
+    items,
+  };
+};
+
 const AUTH_USER_STORAGE_KEY = 'rtnmusic.auth.user';
 const AUTH_TOKEN_STORAGE_KEY = 'rtnmusic.auth.token';
 
@@ -327,6 +364,15 @@ function App() {
   const [continueListening, setContinueListening] = useState([]);
   const [discoveryFeed, setDiscoveryFeed] = useState({ forYouSongs: [], trendingSongs: [], freshAlbums: [], playlists: [] });
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [radioStation, setRadioStation] = useState(null);
+  const [radioLoading, setRadioLoading] = useState(false);
+  const [radioSaving, setRadioSaving] = useState(false);
+  const [radioForm, setRadioForm] = useState({ title: 'RTN Radio', subtitle: 'En directo desde la crew', isLive: true, autoplay: true });
+  const [selectedRadioSongId, setSelectedRadioSongId] = useState('');
+  const [homeSections, setHomeSections] = useState([]);
+  const [homeSectionsLoading, setHomeSectionsLoading] = useState(false);
+  const [homeSectionForm, setHomeSectionForm] = useState({ id: null, title: '', subtitle: '', type: 'playlists', layout: 'carousel', order: '', isActive: true, itemIds: [] });
+  const [homeSectionSaving, setHomeSectionSaving] = useState(false);
   const [homeVisibleCards, setHomeVisibleCards] = useState(3);
   const [featuredCarouselIndex, setFeaturedCarouselIndex] = useState(0);
   const [albumsCarouselIndex, setAlbumsCarouselIndex] = useState(0);
@@ -472,6 +518,24 @@ function App() {
     () => allSongs.slice(crewSongsPage * crewSongsPageSize, (crewSongsPage + 1) * crewSongsPageSize),
     [allSongs, crewSongsPage]
   );
+  const radioQueueSongs = useMemo(() => {
+    const current = radioStation?.currentSong?._id ? radioStation.currentSong : null;
+    const queuedSongs = (radioStation?.queue || [])
+      .map((entry) => entry.song)
+      .filter((song) => song?._id);
+    if (!current) return queuedSongs;
+    return [
+      current,
+      ...queuedSongs.filter((song) => String(song._id) !== String(current._id)),
+    ];
+  }, [radioStation]);
+  const radioCurrentSong = radioQueueSongs[0] || null;
+  const radioNextSongs = radioQueueSongs.slice(1, 6);
+  const isRadioPlayback = playMode === 'radio';
+  const activeHomeSections = useMemo(
+    () => (homeSections || []).filter((section) => section?.isActive !== false && section.items?.length),
+    [homeSections]
+  );
 
   const rtnVideos = useMemo(() => videos.filter((v) => String(v.uploader?._id) === RTN_MUSIC_USER_ID), [videos]);
   const crewVideos = useMemo(() => videos.filter((v) => String(v.uploader?._id) !== RTN_MUSIC_USER_ID), [videos]);
@@ -585,6 +649,46 @@ function App() {
     } catch (err) {
       console.error('Error fetching playlists:', err);
     }
+  };
+
+  const fetchRadioStation = async () => {
+    setRadioLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/radio`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const normalized = normalizeRadioStation(data.station);
+        setRadioStation(normalized);
+        return normalized;
+      }
+    } catch (err) {
+      console.error('Error fetching radio:', err);
+    } finally {
+      setRadioLoading(false);
+    }
+    return null;
+  };
+
+  const fetchHomeSections = async ({ includeInactive = false } = {}) => {
+    if (includeInactive && (!user?._id || user.role !== 'admin')) return [];
+    setHomeSectionsLoading(true);
+    try {
+      const endpoint = includeInactive
+        ? `${API_URL}/admin/home-sections?requesterId=${user._id}`
+        : `${API_URL}/home-sections`;
+      const res = await fetch(endpoint);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const normalized = Array.isArray(data.sections) ? data.sections.map(normalizeHomeSection).filter(Boolean) : [];
+        setHomeSections(normalized);
+        return normalized;
+      }
+    } catch (err) {
+      console.error('Error fetching home sections:', err);
+    } finally {
+      setHomeSectionsLoading(false);
+    }
+    return [];
   };
 
   const fetchUserPlaylists = async () => {
@@ -1143,6 +1247,8 @@ function App() {
     fetchAllSongs();
     fetchPlaylists();
     fetchAlbums();
+    fetchRadioStation();
+    fetchHomeSections();
     if (user?._id) fetchUserPlaylists();
     fetchVideos();
     fetchRtnProfilePic();
@@ -1571,6 +1677,175 @@ function App() {
     }
   };
 
+  const playRadioStation = () => {
+    if (!radioQueueSongs.length) {
+      showToast('La radio no tiene canciones cargadas', 'error');
+      return;
+    }
+    playSong(radioQueueSongs[0], 0, { queue: radioQueueSongs, mode: 'radio' });
+    showToast('Radio RTN en directo', 'success');
+  };
+
+  const applyRadioStation = (station) => {
+    const normalized = normalizeRadioStation(station);
+    setRadioStation(normalized);
+    return normalized;
+  };
+
+  const saveRadioSettings = async (e) => {
+    e.preventDefault();
+    if (!user?._id || user.role !== 'admin') return;
+    setRadioSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/radio`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, ...radioForm }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo guardar la radio', 'error');
+        return;
+      }
+      applyRadioStation(data.station);
+      showToast('Radio actualizada', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al guardar radio', 'error');
+    } finally {
+      setRadioSaving(false);
+    }
+  };
+
+  const playRadioSongNow = async (songId = selectedRadioSongId) => {
+    if (!user?._id || user.role !== 'admin' || !songId) return;
+    setRadioSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/radio/play-now`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, songId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo reproducir en radio', 'error');
+        return;
+      }
+      const station = applyRadioStation(data.station);
+      const current = station?.currentSong;
+      if (isRadioPlayback && current?._id) {
+        const nextQueue = [
+          current,
+          ...(station.queue || []).map((entry) => entry.song).filter((song) => song?._id && String(song._id) !== String(current._id)),
+        ];
+        playSong(current, 0, { queue: nextQueue, mode: 'radio' });
+      }
+      showToast('Sonando ahora en la radio', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al reproducir ahora', 'error');
+    } finally {
+      setRadioSaving(false);
+    }
+  };
+
+  const addRadioQueueSong = async (songId = selectedRadioSongId, playNext = false) => {
+    if (!user?._id || user.role !== 'admin' || !songId) return;
+    setRadioSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/radio/queue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, songId, playNext }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo anadir a la cola', 'error');
+        return;
+      }
+      applyRadioStation(data.station);
+      showToast(playNext ? 'Siguiente cancion actualizada' : 'Cancion anadida a la cola', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al anadir a la cola', 'error');
+    } finally {
+      setRadioSaving(false);
+    }
+  };
+
+  const advanceRadioStation = async () => {
+    if (!user?._id || user.role !== 'admin') return;
+    setRadioSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/radio/advance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo avanzar la radio', 'error');
+        return;
+      }
+      applyRadioStation(data.station);
+      showToast('Radio avanzada', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al avanzar radio', 'error');
+    } finally {
+      setRadioSaving(false);
+    }
+  };
+
+  const reorderRadioQueue = async (fromIndex, toIndex) => {
+    if (!user?._id || user.role !== 'admin') return;
+    const queue = [...(radioStation?.queue || [])];
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= queue.length || toIndex >= queue.length) return;
+    const [moved] = queue.splice(fromIndex, 1);
+    queue.splice(toIndex, 0, moved);
+    const queueEntryIds = queue.map((entry) => entry._id);
+    setRadioStation((prev) => prev ? ({ ...prev, queue }) : prev);
+    try {
+      const res = await fetch(`${API_URL}/admin/radio/queue`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id, queueEntryIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo reordenar la cola', 'error');
+        fetchRadioStation();
+        return;
+      }
+      applyRadioStation(data.station);
+    } catch (err) {
+      console.error(err);
+      showToast('Error al reordenar cola', 'error');
+      fetchRadioStation();
+    }
+  };
+
+  const removeRadioQueueEntry = async (entryId) => {
+    if (!user?._id || user.role !== 'admin' || !entryId) return;
+    try {
+      const res = await fetch(`${API_URL}/admin/radio/queue/${entryId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo quitar de la cola', 'error');
+        return;
+      }
+      applyRadioStation(data.station);
+      showToast('Cancion quitada de la cola', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al quitar de la cola', 'error');
+    }
+  };
+
   const handlePlaybackTimeUpdate = (time) => {
     setCurrentTime(time);
 
@@ -1926,6 +2201,120 @@ function App() {
     } catch (err) {
       console.error(err);
       alert('Error al eliminar playlist');
+    }
+  };
+
+  const getHomeSectionAvailableItems = (type = homeSectionForm.type) => {
+    if (type === 'songs') return allSongs;
+    if (type === 'albums') return albums;
+    if (type === 'artists') {
+      const artistMembers = members.filter((member) => member.role === 'artist' || member.role === 'admin');
+      return artistMembers.length ? artistMembers : allArtistsForHome;
+    }
+    return playlists;
+  };
+
+  const resetHomeSectionForm = () => {
+    setHomeSectionForm({ id: null, title: '', subtitle: '', type: 'playlists', layout: 'carousel', order: '', isActive: true, itemIds: [] });
+  };
+
+  const startEditHomeSection = (section) => {
+    setHomeSectionForm({
+      id: section._id,
+      title: section.title || '',
+      subtitle: section.subtitle || '',
+      type: section.type || 'playlists',
+      layout: section.layout || 'carousel',
+      order: section.order ?? '',
+      isActive: section.isActive !== false,
+      itemIds: Array.isArray(section.itemIds) ? section.itemIds.map((id) => String(id)) : [],
+    });
+  };
+
+  const toggleHomeSectionItem = (itemId) => {
+    const safeId = String(itemId || '');
+    if (!safeId) return;
+    setHomeSectionForm((prev) => ({
+      ...prev,
+      itemIds: prev.itemIds.includes(safeId)
+        ? prev.itemIds.filter((id) => id !== safeId)
+        : [...prev.itemIds, safeId],
+    }));
+  };
+
+  const saveHomeSection = async (e) => {
+    e.preventDefault();
+    if (!user?._id || user.role !== 'admin') return;
+    if (!homeSectionForm.title.trim()) {
+      showToast('La seccion necesita titulo', 'error');
+      return;
+    }
+
+    setHomeSectionSaving(true);
+    try {
+      const endpoint = homeSectionForm.id
+        ? `${API_URL}/admin/home-sections/${homeSectionForm.id}`
+        : `${API_URL}/admin/home-sections`;
+      const method = homeSectionForm.id ? 'PUT' : 'POST';
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requesterId: user._id,
+          title: homeSectionForm.title,
+          subtitle: homeSectionForm.subtitle,
+          type: homeSectionForm.type,
+          layout: homeSectionForm.layout,
+          order: homeSectionForm.order,
+          isActive: homeSectionForm.isActive,
+          itemIds: homeSectionForm.itemIds,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo guardar la seccion', 'error');
+        return;
+      }
+
+      const normalizedSection = normalizeHomeSection(data.section);
+      setHomeSections((prev) => {
+        if (homeSectionForm.id) {
+          return prev.map((section) => section._id === normalizedSection._id ? normalizedSection : section)
+            .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+        }
+        return [...prev, normalizedSection].sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+      });
+      resetHomeSectionForm();
+      showToast('Seccion guardada', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al guardar seccion', 'error');
+    } finally {
+      setHomeSectionSaving(false);
+    }
+  };
+
+  const deleteHomeSection = async (sectionId) => {
+    const confirmed = await askConfirm('Eliminar esta seccion del inicio?', 'Eliminar seccion');
+    if (!confirmed || !user?._id || user.role !== 'admin') return;
+
+    try {
+      const res = await fetch(`${API_URL}/admin/home-sections/${sectionId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: user._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo eliminar la seccion', 'error');
+        return;
+      }
+      setHomeSections((prev) => prev.filter((section) => section._id !== sectionId));
+      if (homeSectionForm.id === sectionId) resetHomeSectionForm();
+      showToast('Seccion eliminada', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error al eliminar seccion', 'error');
     }
   };
 

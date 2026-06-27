@@ -44,7 +44,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -55,6 +55,8 @@ const Playlist = require('./models/Playlist');
 const Album = require('./models/Album');
 const Video = require('./models/Video');
 const TopWeeklyCover = require('./models/TopWeeklyCover');
+const RadioStation = require('./models/RadioStation');
+const HomeSection = require('./models/HomeSection');
 
 const IG_APP_ID = process.env.INSTAGRAM_APP_ID || '';
 const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || '';
@@ -1181,6 +1183,182 @@ const parseBooleanField = (value, defaultValue = false) => {
   return defaultValue;
 };
 
+const isPublishedContentQuery = {
+  $or: [
+    { isScheduled: false },
+    { isPublished: true },
+    { isPublished: { $exists: false } },
+  ],
+};
+
+const normalizeObjectIdList = (value) => {
+  const items = parseArrayField(value);
+  const seen = new Set();
+  return items
+    .map((item) => String(item?._id || item || '').trim())
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .filter((id) => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+};
+
+const requireAdminUser = async (requesterId) => {
+  if (!requesterId) return null;
+  const requester = await User.findById(requesterId).select('_id role');
+  if (!requester || requester.role !== 'admin') return null;
+  return requester;
+};
+
+const getOrCreateRadioStation = async () => {
+  let station = await RadioStation.findOne().sort({ createdAt: 1 });
+  if (!station) {
+    station = new RadioStation({
+      title: 'RTN Radio',
+      subtitle: 'En directo desde la crew',
+      isLive: true,
+      autoplay: true,
+    });
+    await station.save();
+  }
+  return station;
+};
+
+const populateRadioStation = async (stationDoc) => {
+  if (!stationDoc) return null;
+  const populated = await stationDoc.populate([
+    {
+      path: 'currentSong',
+      populate: [
+        { path: 'artist', select: 'username _id profilePic role' },
+        { path: 'collaborators.userId', select: 'username _id' },
+      ],
+    },
+    {
+      path: 'queue.song',
+      populate: [
+        { path: 'artist', select: 'username _id profilePic role' },
+        { path: 'collaborators.userId', select: 'username _id' },
+      ],
+    },
+    { path: 'queue.addedBy', select: 'username _id role' },
+    { path: 'updatedBy', select: 'username _id role' },
+  ]);
+
+  return populated.toObject();
+};
+
+const HOME_SECTION_TYPES = ['playlists', 'songs', 'albums', 'artists'];
+const HOME_SECTION_LAYOUTS = ['grid', 'carousel'];
+
+const getHomeSectionPath = (type) => {
+  if (type === 'songs') return 'songIds';
+  if (type === 'albums') return 'albumIds';
+  if (type === 'artists') return 'artistIds';
+  return 'playlistIds';
+};
+
+const clearHomeSectionItems = (section) => {
+  section.playlistIds = [];
+  section.songIds = [];
+  section.albumIds = [];
+  section.artistIds = [];
+};
+
+const populateHomeSection = async (sectionDoc) => {
+  if (!sectionDoc) return null;
+
+  const populated = await sectionDoc.populate([
+    {
+      path: 'playlistIds',
+      populate: [
+        { path: 'creator', select: 'username _id profilePic' },
+        {
+          path: 'songs',
+          populate: [
+            { path: 'artist', select: 'username _id profilePic role' },
+            { path: 'collaborators.userId', select: 'username _id' },
+          ],
+        },
+      ],
+    },
+    {
+      path: 'songIds',
+      populate: [
+        { path: 'artist', select: 'username _id profilePic role' },
+        { path: 'collaborators.userId', select: 'username _id' },
+      ],
+    },
+    {
+      path: 'albumIds',
+      populate: [
+        { path: 'artist', select: 'username _id profilePic role' },
+        {
+          path: 'songs',
+          populate: [
+            { path: 'artist', select: 'username _id profilePic role' },
+            { path: 'collaborators.userId', select: 'username _id' },
+          ],
+        },
+      ],
+    },
+    { path: 'artistIds', select: 'username _id profilePic role bio' },
+  ]);
+
+  const obj = populated.toObject();
+  const pathName = getHomeSectionPath(obj.type);
+  const rawItems = Array.isArray(obj[pathName]) ? obj[pathName] : [];
+  const items = rawItems.filter(Boolean).filter((item) => {
+    if (obj.type === 'artists') return item.role === 'artist' || item.role === 'admin';
+    return true;
+  });
+
+  return {
+    _id: obj._id,
+    title: obj.title,
+    subtitle: obj.subtitle || '',
+    type: obj.type,
+    layout: obj.layout,
+    order: obj.order,
+    isActive: obj.isActive,
+    itemIds: items.map((item) => item._id),
+    items,
+    createdAt: obj.createdAt,
+    updatedAt: obj.updatedAt,
+  };
+};
+
+const ensureDefaultHomeSections = async () => {
+  const count = await HomeSection.countDocuments();
+  if (count > 0) return;
+
+  const defaultPlaylists = await Playlist.find({ isPublic: true, isDefault: true })
+    .sort({ createdAt: -1 })
+    .limit(12)
+    .select('_id');
+
+  if (!defaultPlaylists.length) return;
+
+  await HomeSection.create({
+    title: 'Especialmente para ti',
+    subtitle: 'Playlists destacadas por RTN Music',
+    type: 'playlists',
+    layout: 'carousel',
+    playlistIds: defaultPlaylists.map((playlist) => playlist._id),
+    order: 1,
+    isActive: true,
+  });
+};
+
+const getHomeSectionsPayload = async ({ includeInactive = false } = {}) => {
+  await ensureDefaultHomeSections();
+  const query = includeInactive ? {} : { isActive: true };
+  const sections = await HomeSection.find(query).sort({ order: 1, createdAt: 1 });
+  const populated = await Promise.all(sections.map((section) => populateHomeSection(section)));
+  return populated.filter(Boolean);
+};
+
 const SONG_GENRES = [
   'urbano',
   'reggaeton',
@@ -1603,6 +1781,307 @@ app.get('/admin/all-songs-debug', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Error al obtener debug de canciones' });
+  }
+});
+
+app.get('/radio', async (req, res) => {
+  try {
+    const station = await getOrCreateRadioStation();
+    return res.json({ station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener la radio' });
+  }
+});
+
+app.patch('/admin/radio', async (req, res) => {
+  try {
+    const { requesterId, title, subtitle, isLive, autoplay } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden editar la radio' });
+    }
+
+    const station = await getOrCreateRadioStation();
+    if (typeof title === 'string' && title.trim()) station.title = title.trim();
+    if (typeof subtitle === 'string') station.subtitle = subtitle.trim();
+    if (isLive !== undefined) station.isLive = parseBooleanField(isLive, station.isLive);
+    if (autoplay !== undefined) station.autoplay = parseBooleanField(autoplay, station.autoplay);
+    station.updatedBy = requester._id;
+    await station.save();
+
+    return res.json({ message: 'Radio actualizada', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar la radio' });
+  }
+});
+
+app.post('/admin/radio/play-now', async (req, res) => {
+  try {
+    const { requesterId, songId } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden controlar la radio' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(String(songId || ''))) {
+      return res.status(400).json({ error: 'songId invalido' });
+    }
+
+    const song = await Song.findById(songId).select('_id title');
+    if (!song) {
+      return res.status(404).json({ error: 'Cancion no encontrada' });
+    }
+
+    const station = await getOrCreateRadioStation();
+    station.currentSong = song._id;
+    station.queue = station.queue.filter((entry) => String(entry.song) !== String(song._id));
+    station.isLive = true;
+    station.updatedBy = requester._id;
+    await station.save();
+
+    return res.json({ message: 'Cancion enviada a la radio', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al reproducir en radio' });
+  }
+});
+
+app.post('/admin/radio/advance', async (req, res) => {
+  try {
+    const { requesterId } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden controlar la radio' });
+    }
+
+    const station = await getOrCreateRadioStation();
+    const nextEntry = station.queue[0];
+    station.currentSong = nextEntry?.song || null;
+    station.queue = station.queue.slice(1);
+    station.updatedBy = requester._id;
+    await station.save();
+
+    return res.json({ message: 'Radio avanzada', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al avanzar la radio' });
+  }
+});
+
+app.post('/admin/radio/queue', async (req, res) => {
+  try {
+    const { requesterId, songId, playNext } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden modificar la cola' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(String(songId || ''))) {
+      return res.status(400).json({ error: 'songId invalido' });
+    }
+
+    const song = await Song.findById(songId).select('_id title');
+    if (!song) {
+      return res.status(404).json({ error: 'Cancion no encontrada' });
+    }
+
+    const station = await getOrCreateRadioStation();
+    const entry = { song: song._id, addedBy: requester._id, addedAt: new Date() };
+    if (parseBooleanField(playNext, false)) {
+      station.queue.unshift(entry);
+    } else {
+      station.queue.push(entry);
+    }
+    station.updatedBy = requester._id;
+    await station.save();
+
+    return res.status(201).json({ message: 'Cancion agregada a la cola', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al agregar a la cola' });
+  }
+});
+
+app.put('/admin/radio/queue', async (req, res) => {
+  try {
+    const { requesterId, queueEntryIds, songIds } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden reordenar la cola' });
+    }
+
+    const station = await getOrCreateRadioStation();
+
+    if (queueEntryIds !== undefined) {
+      const ids = normalizeObjectIdList(queueEntryIds);
+      const byId = new Map(station.queue.map((entry) => [String(entry._id), entry]));
+      station.queue = ids
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .map((entry) => ({
+          _id: entry._id,
+          song: entry.song,
+          addedBy: entry.addedBy,
+          addedAt: entry.addedAt,
+        }));
+    } else {
+      const ids = normalizeObjectIdList(songIds);
+      const songs = ids.length ? await Song.find({ _id: { $in: ids } }).select('_id') : [];
+      const validSongIds = new Set(songs.map((song) => String(song._id)));
+      station.queue = ids
+        .filter((id) => validSongIds.has(String(id)))
+        .map((id) => ({ song: id, addedBy: requester._id, addedAt: new Date() }));
+    }
+
+    station.updatedBy = requester._id;
+    await station.save();
+    return res.json({ message: 'Cola actualizada', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar la cola' });
+  }
+});
+
+app.delete('/admin/radio/queue/:entryId', async (req, res) => {
+  try {
+    const { entryId } = req.params;
+    const { requesterId } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden quitar canciones de la cola' });
+    }
+
+    const station = await getOrCreateRadioStation();
+    const before = station.queue.length;
+    station.queue = station.queue.filter((entry) => String(entry._id) !== String(entryId));
+    if (station.queue.length === before) {
+      return res.status(404).json({ error: 'Entrada de cola no encontrada' });
+    }
+
+    station.updatedBy = requester._id;
+    await station.save();
+    return res.json({ message: 'Cancion quitada de la cola', station: await populateRadioStation(station) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al quitar de la cola' });
+  }
+});
+
+app.get('/home-sections', async (req, res) => {
+  try {
+    const sections = await getHomeSectionsPayload({ includeInactive: false });
+    return res.json({ sections });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener secciones de inicio' });
+  }
+});
+
+app.get('/admin/home-sections', async (req, res) => {
+  try {
+    const requester = await requireAdminUser(req.query.requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden ver secciones' });
+    }
+
+    const sections = await getHomeSectionsPayload({ includeInactive: true });
+    return res.json({ sections });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al obtener secciones' });
+  }
+});
+
+app.post('/admin/home-sections', async (req, res) => {
+  try {
+    const { requesterId, title, subtitle, type, layout, isActive, order } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden crear secciones' });
+    }
+
+    const safeType = HOME_SECTION_TYPES.includes(type) ? type : 'playlists';
+    const safeLayout = HOME_SECTION_LAYOUTS.includes(layout) ? layout : 'carousel';
+    const safeTitle = String(title || '').trim();
+    if (!safeTitle) {
+      return res.status(400).json({ error: 'La seccion necesita titulo' });
+    }
+
+    const maxOrder = await HomeSection.findOne().sort({ order: -1 }).select('order');
+    const section = new HomeSection({
+      title: safeTitle,
+      subtitle: String(subtitle || '').trim(),
+      type: safeType,
+      layout: safeLayout,
+      order: Number.isFinite(Number(order)) ? Number(order) : (Number(maxOrder?.order || 0) + 1),
+      isActive: parseBooleanField(isActive, true),
+    });
+    clearHomeSectionItems(section);
+    section[getHomeSectionPath(safeType)] = normalizeObjectIdList(req.body.itemIds);
+    await section.save();
+
+    return res.status(201).json({ message: 'Seccion creada', section: await populateHomeSection(section) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al crear seccion' });
+  }
+});
+
+app.put('/admin/home-sections/:sectionId', async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const { requesterId, title, subtitle, type, layout, isActive, order } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden editar secciones' });
+    }
+
+    const section = await HomeSection.findById(sectionId);
+    if (!section) {
+      return res.status(404).json({ error: 'Seccion no encontrada' });
+    }
+
+    const previousType = section.type;
+    const safeType = HOME_SECTION_TYPES.includes(type) ? type : section.type;
+    if (typeof title === 'string' && title.trim()) section.title = title.trim();
+    if (typeof subtitle === 'string') section.subtitle = subtitle.trim();
+    section.type = safeType;
+    if (HOME_SECTION_LAYOUTS.includes(layout)) section.layout = layout;
+    if (order !== undefined && Number.isFinite(Number(order))) section.order = Number(order);
+    if (isActive !== undefined) section.isActive = parseBooleanField(isActive, section.isActive);
+    if (req.body.itemIds !== undefined || safeType !== previousType) {
+      clearHomeSectionItems(section);
+      section[getHomeSectionPath(safeType)] = normalizeObjectIdList(req.body.itemIds);
+    }
+    await section.save();
+
+    return res.json({ message: 'Seccion actualizada', section: await populateHomeSection(section) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al actualizar seccion' });
+  }
+});
+
+app.delete('/admin/home-sections/:sectionId', async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const { requesterId } = req.body;
+    const requester = await requireAdminUser(requesterId);
+    if (!requester) {
+      return res.status(403).json({ error: 'Solo admins pueden eliminar secciones' });
+    }
+
+    const deleted = await HomeSection.findByIdAndDelete(sectionId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Seccion no encontrada' });
+    }
+
+    return res.json({ message: 'Seccion eliminada' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Error al eliminar seccion' });
   }
 });
 
@@ -3709,7 +4188,7 @@ app.delete('/songs/:songId/cancel-schedule', async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
     
-    const song = await Song.findByIdAndDelete(songId);
+    const song = await Song.findById(songId);
     if (!song) {
       return res.status(404).json({ error: 'Canción no encontrada' });
     }
@@ -3717,6 +4196,8 @@ app.delete('/songs/:songId/cancel-schedule', async (req, res) => {
     if (String(song.artist) !== String(userId) && user.role !== 'admin') {
       return res.status(403).json({ error: 'No tienes permiso para eliminar esta canción' });
     }
+
+    await Song.findByIdAndDelete(songId);
     
     return res.json({ message: 'Programación cancelada y canción eliminada' });
   } catch (error) {
