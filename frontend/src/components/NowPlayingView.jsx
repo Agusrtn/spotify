@@ -302,7 +302,7 @@ const NowPlayingView = ({
             </section>
           </main>
 
-<aside className="min-w-0 overflow-visible rounded-lg bg-[#181818] pt-0 px-4 pb-4 lg:sticky lg:top-0 lg:max-h-[calc(100vh-8rem)]">
+<aside className="min-w-0 overflow-visible rounded-lg bg-[#181818] pt-0 px-4 pb-4 lg:sticky lg:top-0 lg:max-h-[calc(100vh-7rem)]">
             <div className="aspect-[4/5] w-full overflow-hidden rounded-lg bg-black md:aspect-video lg:aspect-[4/5] relative">
               {hasVisualizerVideo ? (
                 <video
