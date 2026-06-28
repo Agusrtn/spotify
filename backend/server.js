@@ -948,6 +948,26 @@ setInterval(publishScheduledContent, 60 * 1000);
 // Ejecutar una vez al iniciar
 publishScheduledContent();
 
+// Auto-advance radio cada 10 segundos (para que siga sonando aunque nadie escuche)
+setInterval(async () => {
+  try {
+    const station = await getOrCreateRadioStation();
+    if (!station.currentSong || station.isPaused) return;
+
+    const startedAt = station.currentSongStartedAt;
+    if (!startedAt) return;
+
+    const durationSec = Math.max(0, Math.floor(Number(station.currentSongDuration || 180)));
+    const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+
+    if (elapsed >= durationSec + 2) {
+      await advanceRadioToNext(station);
+    }
+  } catch (err) {
+    console.error('Error en auto-advance de radio:', err);
+  }
+}, 10000);
+
 // Test endpoint
 app.get('/test', (req, res) => {
   res.json({ message: 'Backend RTN funcionando correctamente', timestamp: new Date().toISOString() });
@@ -1264,8 +1284,13 @@ const populateRadioStation = async (stationDoc) => {
 // Helper: advance radio to next song in queue, with autoplay fallback
 const advanceRadioToNext = async (stationDoc) => {
   const nextEntry = stationDoc.queue[0];
+  let durationSec = 180;
 
   if (nextEntry) {
+    const songDoc = await Song.findById(nextEntry.song).select('duration');
+    if (songDoc && Number.isFinite(songDoc.duration) && songDoc.duration > 0) {
+      durationSec = Math.floor(Number(songDoc.duration));
+    }
     stationDoc.currentSong = nextEntry.song;
     stationDoc.currentSongStartedAt = new Date();
     stationDoc.queue = stationDoc.queue.slice(1);
@@ -1273,9 +1298,12 @@ const advanceRadioToNext = async (stationDoc) => {
     const count = await Song.countDocuments({ isPublished: true });
     if (count > 0) {
       const randomIndex = Math.floor(Math.random() * count);
-      const randomSong = await Song.findOne({ isPublished: true }).skip(randomIndex).select('_id');
+      const randomSong = await Song.findOne({ isPublished: true }).skip(randomIndex).select('_id duration');
       stationDoc.currentSong = randomSong._id;
       stationDoc.currentSongStartedAt = new Date();
+      if (randomSong && Number.isFinite(randomSong.duration) && randomSong.duration > 0) {
+        durationSec = Math.floor(Number(randomSong.duration));
+      }
     } else {
       stationDoc.currentSong = null;
       stationDoc.currentSongStartedAt = null;
@@ -1285,6 +1313,7 @@ const advanceRadioToNext = async (stationDoc) => {
     stationDoc.currentSongStartedAt = null;
   }
 
+  stationDoc.currentSongDuration = durationSec;
   stationDoc.isPaused = false;
   stationDoc.pauseAt = null;
   stationDoc.pauseOffsetSeconds = 0;
@@ -1869,7 +1898,7 @@ app.post('/admin/radio/play-now', async (req, res) => {
       return res.status(400).json({ error: 'songId invalido' });
     }
 
-    const song = await Song.findById(songId).select('_id title');
+    const song = await Song.findById(songId).select('_id title duration');
     if (!song) {
       return res.status(404).json({ error: 'Cancion no encontrada' });
     }
@@ -1887,6 +1916,8 @@ app.post('/admin/radio/play-now', async (req, res) => {
     station.pauseAt = null;
     station.pauseOffsetSeconds = 0;
     station.currentSongStartedAt = new Date();
+    station.currentSongDuration = Number.isFinite(song.duration) && song.duration > 0
+      ? Math.floor(Number(song.duration)) : 180;
 
     station.updatedBy = requester._id;
     await station.save();

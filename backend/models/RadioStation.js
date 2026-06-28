@@ -14,6 +14,7 @@ const RadioStationSchema = new mongoose.Schema({
 
   currentSong: { type: mongoose.Schema.Types.ObjectId, ref: 'Song', default: null },
   currentSongStartedAt: { type: Date, default: null },
+  currentSongDuration: { type: Number, default: 180 }, // seconds, for server-side auto-advance
 
   // Global live control (multiusuario)
   isPaused: { type: Boolean, default: false },
