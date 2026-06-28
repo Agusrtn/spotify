@@ -314,7 +314,7 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
   }
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center" style={{ overflow: 'hidden' }}>
+    <div className="relative w-full h-full flex flex-col items-center justify-center" style={{ overflow: 'hidden', zIndex: 0 }}>
       <canvas ref={canvasRef} className="w-full h-full min-h-[280px] max-h-[60vh] rounded-[28px] bg-black border border-white/5" />
       {onClose && (
         <button
@@ -325,7 +325,8 @@ const SongVisualizer = ({ audioRef, isPlaying, mode, setMode, visualizerUrl = ''
         </button>
       )}
 
-      <div className="absolute top-4 flex items-center bg-black/85 backdrop-blur-xl border border-white/10 rounded-2xl p-1.5 gap-1.5 z-10 shadow-xl">
+      <div className="absolute top-4 flex items-center bg-black/85 backdrop-blur-xl border border-white/10 rounded-2xl p-1.5 gap-1.5 z-10 shadow-xl" style={{ zIndex: 10 }}>
+
         <button
           type="button"
           onClick={() => setMode('bars')}
