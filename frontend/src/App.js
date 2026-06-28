@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import NowPlayingView from './components/NowPlayingView';
@@ -8,6 +8,11 @@ import RadioHomeSection from './components/RadioHomeSection';
 import HomeSectionRenderer from './components/HomeSectionRenderer';
 import { API_URL } from './config';
 import { Disc, Play, Pause, X, Edit3, Save, Trash2, Plus, Check, Trophy, Share2, Heart, Clock3, Compass, ChevronLeft, ChevronRight, SkipForward, Radio, ListMusic } from 'lucide-react';
+
+const INITIAL_URL_PARAMS = new URLSearchParams(window.location.search);
+const INITIAL_SONG_ID = INITIAL_URL_PARAMS.get('song');
+const INITIAL_ALBUM_ID = INITIAL_URL_PARAMS.get('album');
+const INITIAL_PLAYLIST_ID = INITIAL_URL_PARAMS.get('playlist');
 
 // Album gradient colors (similar to Spotify album art)
 const ALBUM_GRADIENTS = [
@@ -613,6 +618,7 @@ function App() {
           }
           return data;
         });
+        if (INITIAL_SONG_ID) handleDeepLink(data, null, null, null);
       }
     } catch (err) {
       console.error('Error fetching all songs:', err);
@@ -647,6 +653,7 @@ function App() {
         const dataRaw = await res.json();
         const data = Array.isArray(dataRaw) ? dataRaw.map(normalizePlaylistEntity) : [];
         setPlaylists(data);
+        if (INITIAL_PLAYLIST_ID) handleDeepLink(null, null, data, null);
       }
     } catch (err) {
       console.error('Error fetching playlists:', err);
@@ -863,6 +870,7 @@ function App() {
           }
           return data;
         });
+        if (INITIAL_ALBUM_ID) handleDeepLink(null, data, null, null);
       }
     } catch (err) {
       console.error('Error fetching albums:', err);
@@ -1269,23 +1277,26 @@ function App() {
     }
   }, [isNotificationsOpen]);
 
-  useEffect(() => {
+  const handleDeepLink = useCallback((songsData, albumsData, playlistsData, userPlaylistsData) => {
     if (deepLinkHandledRef.current) return;
 
-    const params = new URLSearchParams(window.location.search);
-    const songId = params.get('song');
-    const albumId = params.get('album');
-    const playlistId = params.get('playlist');
-    const artistId = params.get('artist');
-    if (!songId && !albumId && !playlistId && !artistId) return;
+    const songId = INITIAL_SONG_ID;
+    const albumId = INITIAL_ALBUM_ID;
+    const playlistId = INITIAL_PLAYLIST_ID;
+    if (!songId && !albumId && !playlistId) return;
 
-    if (!allSongs.length && !albums.length && !playlists.length && !userPlaylists.length) return;
+    const songs = songsData || allSongs;
+    const albumsList = albumsData || albums;
+    const allPlaylists = playlistsData || playlists;
+    const userP = userPlaylistsData || userPlaylists;
+
+    if (!songs.length && !albumsList.length && !allPlaylists.length && !userP.length) return;
 
     if (songId) {
-      const song = allSongs.find((item) => String(item._id) === String(songId));
+      const song = songs.find((item) => String(item._id) === String(songId));
       if (song) {
-        const songIndex = Math.max(0, allSongs.findIndex((item) => String(item._id) === String(songId)));
-        playSong(song, songIndex, { queue: allSongs, mode: 'all' });
+        const songIndex = Math.max(0, songs.findIndex((item) => String(item._id) === String(songId)));
+        playSong(song, songIndex, { queue: songs, mode: 'all' });
         setShowNowPlaying(true);
         setView('inicio');
         showToast('Abriendo canción compartida', 'success');
@@ -1293,7 +1304,7 @@ function App() {
     }
 
     if (albumId) {
-      const album = albums.find((item) => String(item._id) === String(albumId));
+      const album = albumsList.find((item) => String(item._id) === String(albumId));
       if (album) {
         setSelectedAlbum(album);
         setView('inicio');
@@ -1302,7 +1313,7 @@ function App() {
     }
 
     if (playlistId) {
-      const allAvailablePlaylists = [...(playlists || []), ...(userPlaylists || [])];
+      const allAvailablePlaylists = [...(allPlaylists || []), ...(userP || [])];
       const playlist = allAvailablePlaylists.find((item) => String(item._id) === String(playlistId));
       if (playlist) {
         setSelectedPlaylist(playlist);
@@ -1311,16 +1322,14 @@ function App() {
       }
     }
 
-    if (artistId && !songId && !albumId && !playlistId) {
-      openArtistProfile(artistId);
-      showToast('Abriendo artista compartido', 'success');
-    }
-
-    if (songId || albumId || playlistId || artistId) {
+    if (songId || albumId || playlistId) {
       deepLinkHandledRef.current = true;
-      const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-      window.history.replaceState({}, '', cleanUrl);
+      window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}`);
     }
+  }, [allSongs, albums, playlists, userPlaylists, playSong, setShowNowPlaying, setView, showToast, setSelectedAlbum, setSelectedPlaylist]);
+
+  useEffect(() => {
+    handleDeepLink();
   });
 
   useEffect(() => {
