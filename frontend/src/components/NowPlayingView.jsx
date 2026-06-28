@@ -153,15 +153,27 @@ const NowPlayingView = ({
         <div className="mx-auto grid w-full max-w-[1680px] grid-cols-1 gap-4 px-4 pt-4 md:px-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_460px]">
           <main className="min-w-0 overflow-hidden rounded-lg bg-[#121212]">
             <section className="relative bg-gradient-to-b from-yellow-900/60 via-[#2a1508] to-[#121212] px-5 pb-7 pt-12 md:px-8 lg:px-10">
-              <button
-                type="button"
-                onClick={onClose}
-                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white/80 transition hover:bg-black/70 hover:text-white"
-                aria-label="Minimizar vista"
-                title="Minimizar"
-              >
-                <ChevronDown size={22} />
-              </button>
+              <div className="absolute right-4 top-4 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white/80 transition hover:bg-black/70 hover:text-white"
+                  aria-label="Cerrar vista"
+                  title="Cerrar"
+                >
+                  ✕
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white/80 transition hover:bg-black/70 hover:text-white"
+                  aria-label="Minimizar vista"
+                  title="Minimizar"
+                >
+                  <ChevronDown size={22} />
+                </button>
+              </div>
 
               <div className="grid grid-cols-1 items-end gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)]">
                 <div className="aspect-square w-full max-w-[260px] overflow-hidden rounded-lg bg-black shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
