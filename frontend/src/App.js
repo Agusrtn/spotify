@@ -7198,6 +7198,7 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   };
 
   const handleUpload = async (e) => {
+    e.preventDefault();
     if (isScheduled && !scheduledDate) return alert('Debes seleccionar una fecha y hora para la publicación programada');
     if (!userId) return alert('Sesion invalida. Cierra sesion y vuelve a entrar.');
 
