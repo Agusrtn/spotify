@@ -618,7 +618,6 @@ function App() {
           }
           return data;
         });
-        if (INITIAL_SONG_ID) handleDeepLink(data, null, null, null);
       }
     } catch (err) {
       console.error('Error fetching all songs:', err);
@@ -653,7 +652,6 @@ function App() {
         const dataRaw = await res.json();
         const data = Array.isArray(dataRaw) ? dataRaw.map(normalizePlaylistEntity) : [];
         setPlaylists(data);
-        if (INITIAL_PLAYLIST_ID) handleDeepLink(null, null, data, null);
       }
     } catch (err) {
       console.error('Error fetching playlists:', err);
@@ -870,7 +868,6 @@ function App() {
           }
           return data;
         });
-        if (INITIAL_ALBUM_ID) handleDeepLink(null, data, null, null);
       }
     } catch (err) {
       console.error('Error fetching albums:', err);
@@ -1277,7 +1274,7 @@ function App() {
     }
   }, [isNotificationsOpen]);
 
-  const handleDeepLink = (songsData, albumsData, playlistsData, userPlaylistsData) => {
+  useEffect(() => {
     if (deepLinkHandledRef.current) return;
 
     const songId = INITIAL_SONG_ID;
@@ -1285,54 +1282,42 @@ function App() {
     const playlistId = INITIAL_PLAYLIST_ID;
     if (!songId && !albumId && !playlistId) return;
 
-    const songs = songsData || allSongs;
-    const albumsList = albumsData || albums;
-    const allPlaylists = playlistsData || playlists;
-    const userP = userPlaylistsData || userPlaylists;
-
-    if (!songs.length && !albumsList.length && !allPlaylists.length && !userP.length) return;
-
-    if (songId) {
-      const song = songs.find((item) => String(item._id) === String(songId));
+    if (songId && allSongs.length > 0) {
+      const song = allSongs.find((item) => String(item._id) === String(songId));
       if (song) {
-        const songIndex = Math.max(0, songs.findIndex((item) => String(item._id) === String(songId)));
-        playSong(song, songIndex, { queue: songs, mode: 'all' });
+        const songIndex = Math.max(0, allSongs.findIndex((item) => String(item._id) === String(songId)));
+        playSong(song, songIndex, { queue: allSongs, mode: 'all' });
         setShowNowPlaying(true);
         setView('inicio');
         showToast('Abriendo canción compartida', 'success');
+        deepLinkHandledRef.current = true;
+        window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}`);
       }
     }
 
-    if (albumId) {
-      const album = albumsList.find((item) => String(item._id) === String(albumId));
+    if (albumId && albums.length > 0) {
+      const album = albums.find((item) => String(item._id) === String(albumId));
       if (album) {
         setSelectedAlbum(album);
         setView('inicio');
         showToast('Abriendo álbum compartido', 'success');
+        deepLinkHandledRef.current = true;
+        window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}`);
       }
     }
 
-    if (playlistId) {
-      const allAvailablePlaylists = [...(allPlaylists || []), ...(userP || [])];
+    if (playlistId && (playlists.length > 0 || userPlaylists.length > 0)) {
+      const allAvailablePlaylists = [...playlists, ...userPlaylists];
       const playlist = allAvailablePlaylists.find((item) => String(item._id) === String(playlistId));
       if (playlist) {
         setSelectedPlaylist(playlist);
         setView('inicio');
         showToast('Abriendo playlist compartida', 'success');
+        deepLinkHandledRef.current = true;
+        window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}`);
       }
     }
-
-    if (songId || albumId || playlistId) {
-      deepLinkHandledRef.current = true;
-      window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}`);
-    }
-  };
-
-  useEffect(() => {
-    if (INITIAL_SONG_ID || INITIAL_ALBUM_ID || INITIAL_PLAYLIST_ID) {
-      handleDeepLink();
-    }
-  });
+  }, [allSongs, albums, playlists, userPlaylists]);
 
   useEffect(() => {
     if (!user?._id) return;
