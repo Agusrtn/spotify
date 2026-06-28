@@ -47,7 +47,6 @@ const NowPlayingView = ({
   const [artistTourDates, setArtistTourDates] = useState([]);
   const [tourLoading, setTourLoading] = useState(false);
   const [showAllLyrics, setShowAllLyrics] = useState(false);
-  const [isTimeSectionActive, setIsTimeSectionActive] = useState(false);
 
   const collaborators = useMemo(
     () => (currentSong?.collaborators || []).filter((collaborator) => {
@@ -357,44 +356,23 @@ const NowPlayingView = ({
               </button>
             </div>
 
-            <div
-              className="flex items-center gap-3"
-              onMouseEnter={() => setIsTimeSectionActive(true)}
-              onMouseLeave={() => setIsTimeSectionActive(false)}
-            >
-              {isTimeSectionActive ? (
-                <div className="flex items-center gap-3 w-full">
-                  <Volume2 size={17} className="text-white/60" />
-                  <div
-                    className="h-2 flex-1 cursor-pointer rounded-full bg-white/20 p-[2px]"
-                    onClick={handleVolume}
-                    role="presentation"
-                  >
-                    <div className="h-full rounded-full bg-white" style={{ width: `${volume * 100}%` }} />
-                  </div>
-                  <span className="w-10 text-right text-[11px] font-medium text-white/75">{formatTime(currentTime)}</span>
-                  <span className="w-10 text-[11px] font-medium text-white/75">{formatTime(duration)}</span>
-                </div>
-              ) : (
-                <>
-                  <span className="w-10 text-right text-[11px] font-medium text-white/75">{formatTime(currentTime)}</span>
-                  <div
-                    className="group h-2 flex-1 cursor-pointer rounded-full bg-white/20 p-[2px]"
-                    onClick={handleSeek}
-                    role="presentation"
-                  >
-                    <div
-                      className="h-full rounded-full bg-white group-hover:bg-yellow-400"
-                      style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <span className="w-10 text-[11px] font-medium text-white/75">{formatTime(duration)}</span>
-                </>
-              )}
+            <div className="flex items-center gap-3">
+              <span className="w-10 text-right text-[11px] font-medium text-white/75">{formatTime(currentTime)}</span>
+              <div
+                className="group h-2 flex-1 cursor-pointer rounded-full bg-white/20 p-[2px]"
+                onClick={handleSeek}
+                role="presentation"
+              >
+                <div
+                  className="h-full rounded-full bg-white group-hover:bg-yellow-400"
+                  style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                />
+              </div>
+              <span className="w-10 text-[11px] font-medium text-white/75">{formatTime(duration)}</span>
             </div>
           </div>
 
-          <div className={`hidden items-center justify-end gap-2 md:flex ${isTimeSectionActive ? 'md:hidden' : ''}`}>
+          <div className="hidden items-center justify-end gap-2 md:flex">
             <Volume2 size={17} className="text-white/60" />
             <div className="h-2 w-28 cursor-pointer rounded-full bg-white/20 p-[2px]" onClick={handleVolume} role="presentation">
               <div className="h-full rounded-full bg-white" style={{ width: `${volume * 100}%` }} />

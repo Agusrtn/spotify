@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { X, Copy, Share2, Check, Link2, Sparkles } from 'lucide-react';
-import { API_URL } from '../config';
-
 const ShareModal = ({ open, onClose, type, item, label }) => {
   const [copied, setCopied] = useState(false);
 
@@ -11,7 +9,7 @@ const ShareModal = ({ open, onClose, type, item, label }) => {
 
   if (!open || !item) return null;
 
-  const shareUrl = `${API_URL}/share/${type}/${item._id}?app=${encodeURIComponent(window.location.origin)}`;
+  const shareUrl = `${window.location.origin}/?${type}=${item._id}`;
   const coverUrl = item.coverUrl || item.songs?.[0]?.coverUrl || '';
   const title = item.title || item.name || 'RTN Music';
   const subtitle = type === 'song'

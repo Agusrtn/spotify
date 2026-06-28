@@ -1261,18 +1261,34 @@ const populateRadioStation = async (stationDoc) => {
   return obj;
 };
 
-// Helper: advance radio to next song in queue
+// Helper: advance radio to next song in queue, with autoplay fallback
 const advanceRadioToNext = async (stationDoc) => {
   const nextEntry = stationDoc.queue[0];
-  stationDoc.currentSong = nextEntry?.song || null;
-  stationDoc.currentSongStartedAt = nextEntry ? new Date() : null;
 
-  // Reset global pause state when advancing
+  if (nextEntry) {
+    stationDoc.currentSong = nextEntry.song;
+    stationDoc.currentSongStartedAt = new Date();
+    stationDoc.queue = stationDoc.queue.slice(1);
+  } else if (stationDoc.autoplay) {
+    const count = await Song.countDocuments({ isPublished: true });
+    if (count > 0) {
+      const randomIndex = Math.floor(Math.random() * count);
+      const randomSong = await Song.findOne({ isPublished: true }).skip(randomIndex).select('_id');
+      stationDoc.currentSong = randomSong._id;
+      stationDoc.currentSongStartedAt = new Date();
+    } else {
+      stationDoc.currentSong = null;
+      stationDoc.currentSongStartedAt = null;
+    }
+  } else {
+    stationDoc.currentSong = null;
+    stationDoc.currentSongStartedAt = null;
+  }
+
   stationDoc.isPaused = false;
   stationDoc.pauseAt = null;
   stationDoc.pauseOffsetSeconds = 0;
 
-  stationDoc.queue = stationDoc.queue.slice(1);
   await stationDoc.save();
   return stationDoc;
 };

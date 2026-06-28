@@ -3098,6 +3098,7 @@ function App() {
       unreadNotifications={unreadNotifications}
       onToggleNotifications={() => setIsNotificationsOpen((prev) => !prev)}
       onOpenNowPlaying={() => setShowNowPlaying(true)}
+      hidePlayer={showNowPlaying}
     >
       {view === 'inicio' && (
         <div className="animate-in fade-in duration-700">
@@ -3112,8 +3113,8 @@ function App() {
               <div className="relative">
                 <div className="flex items-center justify-between mb-4 md:mb-6 gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-yellow-400 flex items-center justify-center animate-pulse">
-                      <Radio size={24} className="text-black" />
+                    <div className="w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0">
+                      <img src="/radio-logo.png" alt="RTN Radio" className="w-full h-full object-cover" />
                     </div>
                     <div>
                       <h3 className="text-xl md:text-3xl font-black tracking-tight">{radioStation.title || 'RTN Radio'}</h3>
@@ -3152,7 +3153,7 @@ function App() {
                   </div>
                 )}
 
-                {radioNextSongs.length > 0 && (
+                {user?.role === 'admin' && radioNextSongs.length > 0 && (
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-yellow-400/70 mb-2 flex items-center gap-2">
                       <ListMusic size={13} /> Siguientes en la radio ({radioStation?.queue?.length || 0})
