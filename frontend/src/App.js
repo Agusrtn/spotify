@@ -1271,13 +1271,15 @@ function App() {
 
   useEffect(() => {
     if (deepLinkHandledRef.current) return;
-    if (!allSongs.length && !albums.length && !playlists.length && !userPlaylists.length) return;
 
     const params = new URLSearchParams(window.location.search);
     const songId = params.get('song');
     const albumId = params.get('album');
     const playlistId = params.get('playlist');
     const artistId = params.get('artist');
+    if (!songId && !albumId && !playlistId && !artistId) return;
+
+    if (!allSongs.length && !albums.length && !playlists.length && !userPlaylists.length) return;
 
     if (songId) {
       const song = allSongs.find((item) => String(item._id) === String(songId));
@@ -1319,8 +1321,7 @@ function App() {
       const cleanUrl = `${window.location.origin}${window.location.pathname}`;
       window.history.replaceState({}, '', cleanUrl);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allSongs, albums, playlists, userPlaylists]);
+  });
 
   useEffect(() => {
     if (!user?._id) return;

@@ -213,16 +213,18 @@ const Layout = ({
         </div>
       </main>
 
+      {/* Audio element siempre montado para que no se corte la música */}
+      <audio
+        ref={audioRef}
+        src={currentSong?.audioUrl}
+        onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
+        onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
+        onEnded={onSongEnd}
+      />
+
       {/* PLAYER MODERNO - solo escritorio */}
       {!hidePlayer && (
         <footer className="hidden md:flex fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl h-24 bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[35px] px-10 items-center justify-between shadow-2xl z-50">
-          <audio
-            ref={audioRef}
-            src={currentSong?.audioUrl}
-            onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
-            onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
-            onEnded={onSongEnd}
-          />
 
           <div className="flex items-center gap-5 w-1/3 min-w-0">
             <button

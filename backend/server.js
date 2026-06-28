@@ -1269,7 +1269,7 @@ const advanceRadioToNext = async (stationDoc) => {
     stationDoc.currentSong = nextEntry.song;
     stationDoc.currentSongStartedAt = new Date();
     stationDoc.queue = stationDoc.queue.slice(1);
-  } else if (stationDoc.autoplay) {
+  } else if (stationDoc.autoplay !== false) {
     const count = await Song.countDocuments({ isPublished: true });
     if (count > 0) {
       const randomIndex = Math.floor(Math.random() * count);
