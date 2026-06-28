@@ -7259,156 +7259,160 @@ const UploadModal = ({ isOpen, onClose, user, members, userId, fetchMySongs, fet
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-start md:items-center justify-center pt-10 px-4 pb-28 overflow-y-auto">
-      <form onSubmit={handleUpload} className="bg-[#121212] border border-white/10 w-full max-w-lg rounded-[40px] p-6 md:p-10 relative animate-in zoom-in-95 my-4 md:my-0">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <form onSubmit={handleUpload} className="bg-[#121212] border border-white/10 w-full max-w-lg rounded-[40px] flex flex-col max-h-[90vh] animate-in zoom-in-95">
+        <div className="p-6 md:p-10 pb-0 overflow-y-auto">
 <h2 className="text-2xl md:text-3xl font-black italic mb-5 md:mb-6 uppercase tracking-tighter text-white">
-          SOLTAR <span className="text-yellow-400">NUEVO HIT</span>
-        </h2>
+            SOLTAR <span className="text-yellow-400">NUEVO HIT</span>
+          </h2>
 
-        <div className="space-y-4">
-          {user?.role === 'admin' && (
-            <select
-              value={artistId}
-              onChange={(e) => setArtistId(e.target.value)}
-              className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
-            >
-              {artistOptions.map((member) => (
-                <option key={member._id} value={member._id}>{member.username} ({member.role})</option>
-              ))}
-            </select>
-          )}
+          <div className="space-y-4">
+            {user?.role === 'admin' && (
+              <select
+                value={artistId}
+                onChange={(e) => setArtistId(e.target.value)}
+                className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
+              >
+                {artistOptions.map((member) => (
+                  <option key={member._id} value={member._id}>{member.username} ({member.role})</option>
+                ))}
+              </select>
+            )}
 
-          <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-8 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
-            <input type="file" accept="audio/*" required onChange={(e) => setAudioFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{audioFile ? `OK ${audioFile.name}` : 'SELECCIONAR MP3'}</p>
-          </div>
-
-          <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-8 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
-            <input type="file" accept="image/*" required onChange={(e) => setCoverFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{coverFile ? `OK ${coverFile.name}` : 'SELECCIONAR CARATULA'}</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-6 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
-              <input type="file" accept="video/mp4,video/*" onChange={(e) => setVisualizerFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{visualizerFile ? `OK ${visualizerFile.name}` : 'MP4 VISUALIZER'}</p>
+            <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-8 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
+              <input type="file" accept="audio/*" required onChange={(e) => setAudioFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{audioFile ? `OK ${audioFile.name}` : 'SELECCIONAR MP3'}</p>
             </div>
-            <input
-              value={visualizerUrl}
-              type="url"
-              placeholder="LINK MP4 VISUALIZER"
-              className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
-              onChange={(e) => setVisualizerUrl(e.target.value)}
-            />
-          </div>
 
-          <input value={title} type="text" placeholder="NOMBRE DEL TRACK" required className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold" onChange={(e) => setTitle(e.target.value)} />
-          <textarea value={desc} placeholder="DESCRIPCION" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20" onChange={(e) => setDesc(e.target.value)} />
-          <div className="flex flex-col md:flex-row gap-2">
-            <select
-              value={genre}
-              onChange={(e) => setGenre(e.target.value)}
-              className="w-full md:w-auto bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold uppercase"
-            >
-              {SONG_GENRE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={handleSuggestGenre}
-              className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
-            >
-              Sugerir género
-            </button>
-          </div>
+            <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-8 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
+              <input type="file" accept="image/*" required onChange={(e) => setCoverFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{coverFile ? `OK ${coverFile.name}` : 'SELECCIONAR CARATULA'}</p>
+            </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">COLABORADORES</p>
-              <button type="button" onClick={addCollaborator} className="flex items-center gap-1 text-[10px] text-yellow-400 font-bold uppercase tracking-widest hover:text-yellow-300">
-                <Plus size={12} /> Añadir
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="relative border-2 border-dashed border-white/10 rounded-3xl p-6 text-center hover:border-yellow-400/50 transition-all cursor-pointer">
+                <input type="file" accept="video/mp4,video/*" onChange={(e) => setVisualizerFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{visualizerFile ? `OK ${visualizerFile.name}` : 'MP4 VISUALIZER'}</p>
+              </div>
+              <input
+                value={visualizerUrl}
+                type="url"
+                placeholder="LINK MP4 VISUALIZER"
+                className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold"
+                onChange={(e) => setVisualizerUrl(e.target.value)}
+              />
+            </div>
+
+            <input value={title} type="text" placeholder="NOMBRE DEL TRACK" required className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold" onChange={(e) => setTitle(e.target.value)} />
+            <textarea value={desc} placeholder="DESCRIPCION" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-20" onChange={(e) => setDesc(e.target.value)} />
+            <div className="flex flex-col md:flex-row gap-2">
+              <select
+                value={genre}
+                onChange={(e) => setGenre(e.target.value)}
+                className="w-full md:w-auto bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white font-bold uppercase"
+              >
+                {SONG_GENRE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleSuggestGenre}
+                className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+              >
+                Sugerir género
               </button>
             </div>
-            <div className="space-y-2">
-              {collaborators.map((c, i) => (
-                <div key={i} className="relative flex items-start gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      value={c.name}
-                      placeholder="NOMBRE DEL COLABORADOR"
-                      onChange={(e) => handleCollaboratorNameChange(i, e.target.value)}
-                      className={`w-full bg-black/40 p-3 rounded-xl border ${c.userId ? 'border-yellow-400/60' : 'border-white/5'} outline-none focus:border-yellow-400 text-white text-sm font-bold`}
-                    />
-                    {c.userId && <p className="text-[9px] text-yellow-400/80 mt-0.5 pl-1 font-bold uppercase tracking-widest">✓ Cuenta registrada</p>}
-                    {c.suggestions?.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden z-50 shadow-xl">
-                        {c.suggestions.slice(0, 5).map((u) => (
-                          <button key={u._id} type="button" onClick={() => selectCollaboratorUser(i, u)} className="w-full text-left px-3 py-2 hover:bg-white/10 flex items-center gap-2 text-sm">
-                            {u.profilePic ? <img src={u.profilePic} alt={u.username} className="w-6 h-6 rounded-full object-cover flex-shrink-0" /> : <div className="w-6 h-6 rounded-full bg-yellow-400/20 flex items-center justify-center text-[10px] font-black text-yellow-400 flex-shrink-0">{u.username.charAt(0).toUpperCase()}</div>}
-                            <span className="font-bold">{u.username}</span>
-                            <span className="text-[10px] text-gray-500 ml-auto uppercase">{u.role}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">COLABORADORES</p>
+                <button type="button" onClick={addCollaborator} className="flex items-center gap-1 text-[10px] text-yellow-400 font-bold uppercase tracking-widest hover:text-yellow-300">
+                  <Plus size={12} /> Añadir
+                </button>
+              </div>
+              <div className="space-y-2">
+                {collaborators.map((c, i) => (
+                  <div key={i} className="relative flex items-start gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={c.name}
+                        placeholder="NOMBRE DEL COLABORADOR"
+                        onChange={(e) => handleCollaboratorNameChange(i, e.target.value)}
+                        className={`w-full bg-black/40 p-3 rounded-xl border ${c.userId ? 'border-yellow-400/60' : 'border-white/5'} outline-none focus:border-yellow-400 text-white text-sm font-bold`}
+                      />
+                      {c.userId && <p className="text-[9px] text-yellow-400/80 mt-0.5 pl-1 font-bold uppercase tracking-widest">✓ Cuenta registrada</p>}
+                      {c.suggestions?.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden z-50 shadow-xl">
+                          {c.suggestions.slice(0, 5).map((u) => (
+                            <button key={u._id} type="button" onClick={() => selectCollaboratorUser(i, u)} className="w-full text-left px-3 py-2 hover:bg-white/10 flex items-center gap-2 text-sm">
+                              {u.profilePic ? <img src={u.profilePic} alt={u.username} className="w-6 h-6 rounded-full object-cover flex-shrink-0" /> : <div className="w-6 h-6 rounded-full bg-yellow-400/20 flex items-center justify-center text-[10px] font-black text-yellow-400 flex-shrink-0">{u.username.charAt(0).toUpperCase()}</div>}
+                              <span className="font-bold">{u.username}</span>
+                              <span className="text-[10px] text-gray-500 ml-auto uppercase">{u.role}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => removeCollaborator(i)} className="p-2 mt-1 text-gray-500 hover:text-red-400 flex-shrink-0">
+                      <X size={16} />
+                    </button>
                   </div>
-                  <button type="button" onClick={() => removeCollaborator(i)} className="p-2 mt-1 text-gray-500 hover:text-red-400 flex-shrink-0">
-                    <X size={16} />
-                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-white/10 pt-4 pb-4">
+              <label className="flex items-center gap-3 mb-3">
+                <input
+                  type="checkbox"
+                  checked={isScheduled}
+                  onChange={(e) => setIsScheduled(e.target.checked)}
+                  className="w-4 h-4 rounded accent-yellow-400 cursor-pointer"
+                />
+                <span className="text-sm font-bold text-white uppercase tracking-widest">Programar publicación</span>
+              </label>
+              {isScheduled && (
+                <div className="bg-black/30 border border-yellow-400/30 rounded-2xl p-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">
+                    Fecha y hora de publicación
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 16)}
+                    className="w-full bg-black/40 p-3 rounded-xl border border-yellow-400/50 outline-none focus:border-yellow-400 text-white text-sm font-bold"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-2">La canción se publicará automáticamente en la fecha y hora seleccionada</p>
                 </div>
-              ))}
+              )}
+            </div>
+
+            <div>
+              <textarea value={lyrics} placeholder="LETRA (OPCIONAL) - TEXTO NORMAL O LRC [mm:ss.xx]" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-32" onChange={(e) => setLyrics(e.target.value)} />
+              <button
+                type="button"
+                onClick={handleConvertLyricsToLrc}
+                className="mt-3 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
+              >
+                Convertir a LRC
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerateLrcWithAi}
+                disabled={lrcAiLoading}
+                className="mt-3 ml-2 px-4 py-2 rounded-xl bg-yellow-500/80 hover:bg-yellow-500 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
+              >
+                {lrcAiLoading ? 'Analizando...' : 'Generar LRC con IA'}
+              </button>
+              <p className="text-[10px] text-gray-500 mt-2">Si pegas LRC con timestamps, se mostrará sincronizable. Si pegas texto normal, se verá como letra común.</p>
             </div>
           </div>
+        </div>
 
-          <div className="border-t border-white/10 pt-4 pb-4">
-            <label className="flex items-center gap-3 mb-3">
-              <input
-                type="checkbox"
-                checked={isScheduled}
-                onChange={(e) => setIsScheduled(e.target.checked)}
-                className="w-4 h-4 rounded accent-yellow-400 cursor-pointer"
-              />
-              <span className="text-sm font-bold text-white uppercase tracking-widest">Programar publicación</span>
-            </label>
-            {isScheduled && (
-              <div className="bg-black/30 border border-yellow-400/30 rounded-2xl p-4">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-2">
-                  Fecha y hora de publicación
-                </label>
-                <input
-                  type="datetime-local"
-                  value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                  min={new Date().toISOString().slice(0, 16)}
-                  className="w-full bg-black/40 p-3 rounded-xl border border-yellow-400/50 outline-none focus:border-yellow-400 text-white text-sm font-bold"
-                />
-                <p className="text-[10px] text-gray-400 mt-2">La canción se publicará automáticamente en la fecha y hora seleccionada</p>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <textarea value={lyrics} placeholder="LETRA (OPCIONAL) - TEXTO NORMAL O LRC [mm:ss.xx]" className="w-full bg-black/40 p-4 rounded-2xl border border-white/5 outline-none focus:border-yellow-400 text-white h-32" onChange={(e) => setLyrics(e.target.value)} />
-            <button
-              type="button"
-              onClick={handleConvertLyricsToLrc}
-              className="mt-3 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-widest"
-            >
-              Convertir a LRC
-            </button>
-            <button
-              type="button"
-              onClick={handleGenerateLrcWithAi}
-              disabled={lrcAiLoading}
-              className="mt-3 ml-2 px-4 py-2 rounded-xl bg-yellow-500/80 hover:bg-yellow-500 text-xs font-bold uppercase tracking-widest disabled:opacity-60"
-            >
-              {lrcAiLoading ? 'Analizando...' : 'Generar LRC con IA'}
-            </button>
-            <p className="text-[10px] text-gray-500 mt-2">Si pegas LRC con timestamps, se mostrará sincronizable. Si pegas texto normal, se verá como letra común.</p>
-          </div>
-
+        <div className="p-6 md:p-10 pt-0">
           <div className="flex gap-4 pt-4">
             <button type="button" onClick={onClose} className="flex-1 text-gray-500 font-black uppercase text-[10px] tracking-widest">CANCELAR</button>
             <button disabled={loading} className="flex-1 bg-yellow-400 text-black font-black py-4 rounded-2xl uppercase tracking-widest text-[10px] shadow-lg shadow-yellow-400/20 disabled:opacity-50">
