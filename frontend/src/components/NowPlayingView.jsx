@@ -146,7 +146,7 @@ const NowPlayingView = ({
   const playCount = Number(currentSong.playCount || 0).toLocaleString('es-ES');
 
   return (
-    <div className="fixed inset-0 z-[90] bg-[#080808] text-white animate-in fade-in duration-300">
+    <div className="fixed top-0 bottom-0 right-0 z-[90] bg-[#080808] text-white animate-in fade-in duration-300 md:left-64 md:w-[calc(100vw-16rem)]">
       <div className="absolute inset-x-0 top-0 h-1 bg-yellow-400" />
 
       <div className="h-full overflow-y-auto pb-32 lg:pb-28 pt-0">
