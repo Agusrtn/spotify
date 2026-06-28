@@ -149,8 +149,8 @@ const NowPlayingView = ({
     <div className="fixed top-0 bottom-0 right-0 z-[90] bg-[#080808] text-white animate-in fade-in duration-300 md:left-64 md:w-[calc(100vw-16rem)]">
       <div className="absolute inset-x-0 top-0 h-1 bg-yellow-400" />
 
-      <div className="h-full overflow-y-auto pb-32 lg:pb-28 pt-0">
-        <div className="mx-auto grid w-full max-w-[1680px] grid-cols-1 gap-4 px-4 pt-4 md:px-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_460px]">
+      <div className="h-full overflow-y-auto pb-24 lg:pb-20 pt-0">
+        <div className="mx-auto grid w-full max-w-[1680px] grid-cols-1 gap-4 px-4 pt-3 md:px-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_460px]">
           <main className="min-w-0 overflow-hidden rounded-lg bg-[#121212]">
             <section className="relative bg-gradient-to-b from-yellow-900/60 via-[#2a1508] to-[#121212] px-5 pb-7 pt-12 md:px-8 lg:px-10">
               <div className="absolute right-4 top-4 flex items-center gap-2">
