@@ -153,27 +153,7 @@ const NowPlayingView = ({
         <div className="mx-auto grid w-full max-w-[1680px] grid-cols-1 gap-4 px-4 pt-3 md:px-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_460px]">
           <main className="min-w-0 overflow-hidden rounded-lg bg-[#121212]">
             <section className="relative bg-gradient-to-b from-yellow-900/60 via-[#2a1508] to-[#121212] px-5 pb-7 pt-12 md:px-8 lg:px-10">
-              <div className="absolute right-4 top-4 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white/80 transition hover:bg-black/70 hover:text-white"
-                  aria-label="Cerrar vista"
-                  title="Cerrar"
-                >
-                  ✕
-                </button>
-
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white/80 transition hover:bg-black/70 hover:text-white"
-                  aria-label="Minimizar vista"
-                  title="Minimizar"
-                >
-                  <ChevronDown size={22} />
-                </button>
-              </div>
+              {/* Botones de minimizar/cerrar se muestran en la barra inferior (footer) */}
 
               <div className="grid grid-cols-1 items-end gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)]">
                 <div className="aspect-square w-full max-w-[260px] overflow-hidden rounded-lg bg-black shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
@@ -218,24 +198,18 @@ const NowPlayingView = ({
                   <button
                     type="button"
                     onClick={() => onToggleLike?.(currentSong._id)}
-                    className={`flex h-11 w-11 items-center justify-center rounded-full border transition ${isLiked ? 'border-green-400/40 bg-green-400/10 text-green-400' : 'border-white/10 bg-white/5 text-white/70 hover:text-white'}`}
+                    className={`flex h-11 w-11 items-center justify-center rounded-full border transition ${
+                      isLiked
+                        ? 'border-orange-400/50 bg-orange-400/10 text-orange-400'
+                        : 'border-white/10 bg-white/5 text-white/70 hover:text-white'
+                    }`}
                     aria-label={isLiked ? 'Quitar de favoritos' : 'Agregar a favoritos'}
                     title={isLiked ? 'Quitar de favoritos' : 'Agregar a favoritos'}
                   >
-                    {isLiked ? <CheckCircle2 size={25} fill="currentColor" /> : <Heart size={23} />}
+                    {isLiked ? <Heart size={23} fill="currentColor" /> : <Heart size={23} />}
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={openAudio}
-                    disabled={!currentSong.audioUrl}
-                    className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
-                    aria-label="Abrir audio"
-                    title="Abrir audio"
-                  >
-                    <Download size={22} />
-                  </button>
-
+                  {/* Ocultamos abrir audio y ver detalles */}
                   <button
                     type="button"
                     onClick={() => onShare?.(currentSong)}
@@ -244,16 +218,6 @@ const NowPlayingView = ({
                     title="Compartir"
                   >
                     <Share2 size={21} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => onOpenSong?.(currentSong)}
-                    className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition hover:text-white"
-                    aria-label="Ver detalles"
-                    title="Ver detalles"
-                  >
-                    <Info size={22} />
                   </button>
                 </div>
 
@@ -355,6 +319,26 @@ const NowPlayingView = ({
 
           <div className="min-w-0">
             <div className="mb-3 flex items-center justify-center gap-6">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 transition hover:bg-black/70 hover:text-white"
+                aria-label="Cerrar vista"
+                title="Cerrar"
+              >
+                ✕
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 transition hover:bg-black/70 hover:text-white"
+                aria-label="Minimizar vista"
+                title="Minimizar"
+              >
+                <ChevronDown size={22} />
+              </button>
+
               <button type="button" onClick={prevSong} className="text-white/55 transition hover:text-white" aria-label="Anterior" title="Anterior">
                 <SkipBack size={20} />
               </button>
