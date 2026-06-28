@@ -149,7 +149,7 @@ const NowPlayingView = ({
     <div className="fixed inset-0 z-[90] bg-[#080808] text-white animate-in fade-in duration-300">
       <div className="absolute inset-x-0 top-0 h-1 bg-yellow-400" />
 
-      <div className="h-full overflow-y-auto pb-32 lg:pb-28">
+      <div className="h-full overflow-y-auto pb-32 lg:pb-28 pt-0">
         <div className="mx-auto grid w-full max-w-[1680px] grid-cols-1 gap-4 px-4 pt-4 md:px-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_460px]">
           <main className="min-w-0 overflow-hidden rounded-lg bg-[#121212]">
             <section className="relative bg-gradient-to-b from-yellow-900/60 via-[#2a1508] to-[#121212] px-5 pb-7 pt-12 md:px-8 lg:px-10">
@@ -302,7 +302,7 @@ const NowPlayingView = ({
             </section>
           </main>
 
-          <aside className="min-w-0 overflow-hidden rounded-lg bg-[#181818] pt-0 px-4 pb-4 lg:sticky lg:top-0 lg:max-h-[calc(100vh-8rem)]">
+<aside className="min-w-0 overflow-visible rounded-lg bg-[#181818] pt-0 px-4 pb-4 lg:sticky lg:top-0 lg:max-h-[calc(100vh-8rem)]">
             <div className="aspect-[4/5] w-full overflow-hidden rounded-lg bg-black md:aspect-video lg:aspect-[4/5] relative">
               {hasVisualizerVideo ? (
                 <video
@@ -329,7 +329,7 @@ const NowPlayingView = ({
         </div>
       </div>
 
-      <footer className="absolute bottom-0 inset-x-0 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur md:px-8">
+      <footer className="fixed bottom-0 inset-x-0 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur md:px-8">
         <div className="mx-auto grid max-w-[1680px] grid-cols-1 items-center gap-3 md:grid-cols-[260px_minmax(0,1fr)_190px]">
           <div className="hidden min-w-0 items-center gap-3 md:flex">
             <div className="h-14 w-14 shrink-0 overflow-hidden rounded bg-white/10">
