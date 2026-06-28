@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import NowPlayingView from './components/NowPlayingView';
@@ -1277,7 +1277,7 @@ function App() {
     }
   }, [isNotificationsOpen]);
 
-  const handleDeepLink = useCallback((songsData, albumsData, playlistsData, userPlaylistsData) => {
+  const handleDeepLink = (songsData, albumsData, playlistsData, userPlaylistsData) => {
     if (deepLinkHandledRef.current) return;
 
     const songId = INITIAL_SONG_ID;
@@ -1326,10 +1326,12 @@ function App() {
       deepLinkHandledRef.current = true;
       window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}`);
     }
-  }, [allSongs, albums, playlists, userPlaylists, playSong, setShowNowPlaying, setView, showToast, setSelectedAlbum, setSelectedPlaylist]);
+  };
 
   useEffect(() => {
-    handleDeepLink();
+    if (INITIAL_SONG_ID || INITIAL_ALBUM_ID || INITIAL_PLAYLIST_ID) {
+      handleDeepLink();
+    }
   });
 
   useEffect(() => {
